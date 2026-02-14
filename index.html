@@ -351,6 +351,11 @@ select.input { appearance: none; background: white url("data:image/svg+xml,%3Csv
 .chat-input { display: flex; gap: 8px; padding: 8px 0; position: sticky; bottom: 0; background: var(--c-bg); }
 .chat-input .input { flex: 1; }
 
+/* ── User Card ── */
+.user-card { background: white; border-radius: var(--radius); padding: 12px 16px; margin-bottom: 8px; box-shadow: var(--shadow); cursor: pointer; transition: all .15s; }
+.user-card:hover { box-shadow: var(--shadow-md); }
+.user-card__meta { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 6px; font-size: 11px; color: var(--c-gray-400); }
+
 /* ── Filter Tabs ── */
 .filter-tabs { display: flex; gap: 4px; overflow-x: auto; -webkit-overflow-scrolling: touch; padding-bottom: 10px; margin-bottom: 10px; }
 .filter-tab { white-space: nowrap; padding: 6px 12px; border-radius: 20px; font-size: 11px; font-weight: 700; background: var(--c-gray-100); color: var(--c-gray-500); transition: all .15s; flex-shrink: 0; }
@@ -730,6 +735,10 @@ const API = {
   async getUsers()                   { return this.call('getUsers'); },
   async getGroups()                  { return this.cachedCall('getGroups'); },
   async getSchedule()                { return this.cachedCall('getSchedule'); },
+  async createUser(data)             { this.clearCache(); return this.call('createUser', data); },
+  async updateUser(data)             { this.clearCache(); return this.call('updateUser', data); },
+  async resetPassword(userId, pw)    { return this.call('resetPassword', { user_id: userId, new_password: pw }); },
+  async deleteUser(userId)           { this.clearCache(); return this.call('deleteUser', { user_id: userId }); },
 };
 // ═══════════════════════════════════════
 //  ユーザー画面
@@ -1399,7 +1408,7 @@ const UserPages = {
 // ═══════════════════════════════════════
 
 const AdminPages = {
-  _state: { editProduct: null, chatThread: null, orderFilter: 'all', selectedOrder: null },
+  _state: { editProduct: null, chatThread: null, orderFilter: 'all', selectedOrder: null, editUser: null, pwUser: null },
 
   // ════════════════════════════════
   //  注文管理
@@ -1834,6 +1843,197 @@ const AdminPages = {
   },
 
   // ════════════════════════════════
+  //  ユーザー管理
+  // ════════════════════════════════
+  async renderUsers() {
+    this._state.editUser = null;
+    this._state.pwUser = null;
+    const users = await API.getUsers();
+    const groups = await API.getGroups();
+    const list = Array.isArray(users) ? users : [];
+    const groupList = Array.isArray(groups) ? groups : [];
+
+    let html = `<div class="flex-between mb-1">
+      <h2 class="page-title">ユーザー管理</h2>
+      <button class="btn btn--primary btn--sm" onclick="AdminPages._state.editUser='new';App.currentPage='user-edit';App.renderPage()">＋ 新規登録</button>
+    </div>`;
+
+    // ロール別集計
+    const admins = list.filter(u => u.role === 'admin');
+    const leaders = list.filter(u => u.role === 'leader');
+    const users_ = list.filter(u => u.role === 'user');
+
+    html += UI.statGrid([
+      UI.stat('管理者', admins.length, '', 'purple'),
+      UI.stat('リーダー', leaders.length, '', 'blue'),
+      UI.stat('ユーザー', users_.length, '', 'green'),
+    ]);
+
+    if (list.length === 0) return html + UI.empty('ユーザーがいません', '👥');
+
+    // グループ別に表示
+    const roleOrder = { admin: 0, leader: 1, user: 2 };
+    const sorted = [...list].sort((a, b) => (roleOrder[a.role] || 9) - (roleOrder[b.role] || 9));
+
+    sorted.forEach(u => {
+      const gName = groupList.find(g => g.group_id === u.group_id)?.name || '';
+      const roleLabel = { admin: '管理者', leader: 'リーダー', user: 'ユーザー' }[u.role] || u.role;
+      const roleColor = { admin: 'purple', leader: 'blue', user: 'green' }[u.role] || 'gray';
+
+      html += `<div class="user-card" onclick="AdminPages._state.editUser='${u.user_id}';App.currentPage='user-edit';App.renderPage()">
+        <div class="flex-between">
+          <div>
+            <span class="font-bold">${u.name}</span>
+            <span class="text-xs text-gray ml-05">${gName}</span>
+          </div>
+          ${UI.badge(roleLabel, roleColor)}
+        </div>
+        <div class="user-card__meta">
+          <span>ID: ${u.login_id || '-'}</span>
+          <span>${u.email || '-'}</span>
+          ${u.reinvest_balance > 0 ? `<span class="text-green">残高: ${Fmt.yen(u.reinvest_balance)}</span>` : ''}
+        </div>
+      </div>`;
+    });
+
+    return html;
+  },
+
+  // ════════════════════════════════
+  //  ユーザー編集/新規登録
+  // ════════════════════════════════
+  async renderUserEdit() {
+    const uid = this._state.editUser;
+    const isNew = uid === 'new';
+    const groups = await API.getGroups();
+    const groupList = Array.isArray(groups) ? groups : [];
+
+    let u = { name: '', login_id: '', email: '', group_id: '', role: 'user', is_repeater: false };
+    if (!isNew) {
+      const users = await API.getUsers();
+      const found = (Array.isArray(users) ? users : []).find(x => x.user_id === uid);
+      if (found) u = found;
+    }
+
+    let html = `
+      <button class="btn btn--ghost btn--sm mb-1" onclick="App.navigate('users')">← ユーザー一覧</button>
+      <h2 class="page-title">${isNew ? 'ユーザー登録' : 'ユーザー編集'}</h2>`;
+
+    html += UI.card(`
+      <div class="form-group">
+        <label class="form-label">名前 *</label>
+        <input type="text" class="input" id="ue-name" value="${u.name || ''}" placeholder="田中 太郎">
+      </div>
+      <div class="form-group">
+        <label class="form-label">ログインID *</label>
+        <input type="text" class="input" id="ue-loginid" value="${u.login_id || ''}" placeholder="tanaka">
+      </div>
+      ${isNew ? `
+      <div class="form-group">
+        <label class="form-label">パスワード *</label>
+        <input type="text" class="input" id="ue-password" value="" placeholder="4文字以上">
+      </div>` : ''}
+      <div class="form-group">
+        <label class="form-label">メールアドレス</label>
+        <input type="email" class="input" id="ue-email" value="${u.email || ''}" placeholder="tanaka@example.com">
+      </div>
+      <div class="form-group">
+        <label class="form-label">ロール *</label>
+        <select class="input" id="ue-role">
+          <option value="user" ${u.role === 'user' ? 'selected' : ''}>ユーザー</option>
+          <option value="leader" ${u.role === 'leader' ? 'selected' : ''}>リーダー</option>
+          <option value="admin" ${u.role === 'admin' ? 'selected' : ''}>管理者</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">グループ</label>
+        <select class="input" id="ue-group">
+          <option value="">なし</option>
+          ${groupList.map(g => `<option value="${g.group_id}" ${u.group_id === g.group_id ? 'selected' : ''}>${g.name}</option>`).join('')}
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">
+          <input type="checkbox" id="ue-repeater" ${(u.is_repeater === true || u.is_repeater === 'TRUE') ? 'checked' : ''}> リピーター
+        </label>
+      </div>
+      <button class="btn btn--primary btn--full mt-1" onclick="AdminPages._saveUser('${uid}')">${isNew ? '登録する' : '保存する'}</button>
+    `);
+
+    // 既存ユーザー：パスワードリセット & 削除
+    if (!isNew) {
+      html += UI.card(`
+        <h3 class="section-title">パスワードリセット</h3>
+        <div class="form-group">
+          <input type="text" class="input" id="ue-newpw" placeholder="新しいパスワード（4文字以上）">
+        </div>
+        <button class="btn btn--outline btn--full" onclick="AdminPages._resetPw('${uid}')">パスワードを変更</button>
+      `);
+
+      html += UI.card(`
+        <h3 class="section-title text-red">危険な操作</h3>
+        <button class="btn btn--ghost btn--full text-red" onclick="AdminPages._deleteUser('${uid}', '${u.name}')">このユーザーを削除</button>
+      `);
+
+      // 残高情報
+      if (u.reinvest_balance > 0) {
+        html += UI.card(`
+          <h3 class="section-title">運用残高</h3>
+          ${UI.confirmRow('現在の残高', Fmt.yen(u.reinvest_balance))}
+        `);
+      }
+    }
+
+    return html;
+  },
+
+  async _saveUser(uid) {
+    const name = $('#ue-name')?.value?.trim();
+    const login_id = $('#ue-loginid')?.value?.trim();
+    const email = $('#ue-email')?.value?.trim();
+    const role = $('#ue-role')?.value;
+    const group_id = $('#ue-group')?.value;
+    const is_repeater = $('#ue-repeater')?.checked;
+
+    if (!name) { UI.toast('名前を入力してください', 'error'); return; }
+    if (!login_id) { UI.toast('ログインIDを入力してください', 'error'); return; }
+
+    let res;
+    if (uid === 'new') {
+      const password = $('#ue-password')?.value?.trim();
+      if (!password || password.length < 4) { UI.toast('パスワードは4文字以上にしてください', 'error'); return; }
+      res = await API.createUser({ name, login_id, password, email, role, group_id, is_repeater });
+    } else {
+      res = await API.updateUser({ user_id: uid, name, login_id, email, role, group_id, is_repeater });
+    }
+
+    if (res?.success) {
+      UI.toast(uid === 'new' ? 'ユーザーを登録しました' : 'ユーザーを保存しました');
+      App.navigate('users');
+    } else {
+      UI.toast(res?.error || '保存に失敗しました', 'error');
+    }
+  },
+
+  async _resetPw(uid) {
+    const pw = $('#ue-newpw')?.value?.trim();
+    if (!pw || pw.length < 4) { UI.toast('パスワードは4文字以上にしてください', 'error'); return; }
+    UI.confirm('パスワードを変更しますか？', async () => {
+      const res = await API.resetPassword(uid, pw);
+      if (res?.success) { UI.toast('パスワードを変更しました'); $('#ue-newpw').value = ''; }
+      else UI.toast(res?.error || '変更に失敗しました', 'error');
+    });
+  },
+
+  async _deleteUser(uid, name) {
+    UI.confirm(`「${name}」を削除しますか？この操作は取り消せません。`, async () => {
+      const res = await API.deleteUser(uid);
+      if (res?.success) { UI.toast('ユーザーを削除しました'); App.navigate('users'); }
+      else UI.toast(res?.error || '削除に失敗しました', 'error');
+    });
+  },
+
+  // ════════════════════════════════
   //  メッセージ
   // ════════════════════════════════
   async renderMessages() {
@@ -2223,7 +2423,7 @@ const App = {
   _renderNav(role) {
     const tabs = {
       user:   [{ id: 'top', icon: '🏠', label: 'TOP' }, { id: 'msg', icon: '💬', label: 'メッセージ' }, { id: 'mypage', icon: '👤', label: 'マイページ' }],
-      admin:  [{ id: 'dashboard', icon: '📊', label: 'ダッシュボード' }, { id: 'order', icon: '📋', label: '注文管理' }, { id: 'product', icon: '📦', label: '商品' }, { id: 'return', icon: '↩️', label: 'お戻し' }, { id: 'msg', icon: '💬', label: 'メッセージ' }],
+      admin:  [{ id: 'dashboard', icon: '📊', label: 'ダッシュボード' }, { id: 'order', icon: '📋', label: '注文管理' }, { id: 'product', icon: '📦', label: '商品' }, { id: 'return', icon: '↩️', label: 'お戻し' }, { id: 'users', icon: '👥', label: 'ユーザー' }, { id: 'msg', icon: '💬', label: 'メッセージ' }],
       leader: [{ id: 'price', icon: '💰', label: '価格設定' }, { id: 'order', icon: '📋', label: '注文確認' }, { id: 'return', icon: '↩️', label: 'お戻し' }, { id: 'msg', icon: '💬', label: 'メッセージ' }],
     };
     const items = tabs[role] || tabs.user;
@@ -2280,6 +2480,8 @@ const App = {
           case 'product':   html = await AdminPages.renderProducts(); break;
           case 'product-edit': html = await AdminPages.renderProductEdit(); break;
           case 'return':    html = await AdminPages.renderReturns(); break;
+          case 'users':     html = await AdminPages.renderUsers(); break;
+          case 'user-edit': html = await AdminPages.renderUserEdit(); break;
           case 'msg':       html = await AdminPages.renderMessages(); break;
           default: html = UI.empty('ページが見つかりません');
         }
