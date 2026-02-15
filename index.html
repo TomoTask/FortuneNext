@@ -1668,6 +1668,7 @@ const AdminPages = {
         </div>
         <div class="text-sm mt-05">
           ${UI.confirmRow('仕入', Fmt.yen(p.buy_price))}
+          ${UI.confirmRow('売単価', Fmt.yen(p.base_sell_price || p.sell_price))}
           ${UI.confirmRow('在庫', `${p.remaining_qty} / ${p.total_qty}`)}
           ${UI.confirmRow('締切', Fmt.date(p.deadline, true))}
         </div>
@@ -1701,7 +1702,12 @@ const AdminPages = {
       </div>
       <div class="form-group">
         <label class="form-label">仕入単価 (¥)</label>
-        <input type="number" class="input" id="pe-price" value="${p.buy_price}" placeholder="14000">
+        <input type="number" class="input" id="pe-buyprice" value="${p.buy_price}" placeholder="14000">
+      </div>
+      <div class="form-group">
+        <label class="form-label">売単価（基準価格）(¥)</label>
+        <input type="number" class="input" id="pe-sellprice" value="${p.base_sell_price || p.sell_price || ''}" placeholder="15000">
+        <div class="text-xs text-gray mt-05">各グループリーダーがこの価格をベースに調整します</div>
       </div>
       <div class="form-group">
         <label class="form-label">総数量</label>
@@ -1750,19 +1756,22 @@ const AdminPages = {
 
   async _saveProduct(pid) {
     const name = $('#pe-name')?.value?.trim();
-    const buy_price = Number($('#pe-price')?.value);
+    const buy_price = Number($('#pe-buyprice')?.value);
+    const sell_price = Number($('#pe-sellprice')?.value);
     const total_qty = Number($('#pe-qty')?.value);
     const deadline = $('#pe-deadline')?.value;
     const status = $('#pe-status')?.value;
 
     if (!name) { UI.toast('商品名を入力してください', 'error'); return; }
     if (!buy_price || buy_price <= 0) { UI.toast('仕入単価を入力してください', 'error'); return; }
+    if (!sell_price || sell_price <= 0) { UI.toast('売単価を入力してください', 'error'); return; }
+    if (sell_price < buy_price) { UI.toast('売単価は仕入単価以上にしてください', 'error'); return; }
 
     let res;
     if (pid === 'new') {
-      res = await API.createProduct({ name, buy_price, total_qty, deadline });
+      res = await API.createProduct({ name, buy_price, sell_price, total_qty, deadline });
     } else {
-      res = await API.updateProduct({ productId: pid, name, status, deadline, remaining_qty: total_qty });
+      res = await API.updateProduct({ productId: pid, name, buy_price, sell_price, status, deadline, total_qty });
     }
 
     if (res?.success) {
@@ -2144,30 +2153,38 @@ const LeaderPages = {
     const active = list.filter(p => p.status === 'active');
 
     let html = `<h2 class="page-title">価格設定</h2>
-      <div class="text-sm text-gray mb-1">${groupName} の売単価を設定</div>`;
+      <div class="text-sm text-gray mb-1">${groupName} の販売単価を調整</div>`;
 
     if (active.length === 0) return html + UI.empty('販売中の商品はありません', '💰');
 
     for (const p of active) {
       const prices = await API.getGroupPrices(p.product_id);
       const gp = (Array.isArray(prices) ? prices : []).find(g => g.group_id === groupId);
-      const sellPrice = gp?.sell_price || p.buy_price;
+      const baseSellPrice = p.base_sell_price || 0;
+      const groupSellPrice = gp?.sell_price || baseSellPrice;
       const profitRate = gp?.profit_rate || 0;
+      const diff = groupSellPrice - baseSellPrice;
 
       html += UI.card(`
         <div class="flex-between">
           <span class="font-bold">${p.name}</span>
           ${UI.badge(Fmt.productStatus(p.status), Fmt.statusColor(p.status))}
         </div>
-        ${UI.confirmRow('仕入単価', Fmt.yen(p.buy_price))}
-        ${UI.confirmRow('現在の売単価', Fmt.yen(sellPrice), 'font-bold')}
-        ${UI.confirmRow('利益率', Fmt.pct(profitRate))}
+        <div class="price-info-grid mt-05">
+          ${UI.confirmRow('仕入単価', Fmt.yen(p.buy_price))}
+          ${UI.confirmRow('基準売単価（管理者設定）', Fmt.yen(baseSellPrice))}
+          <div class="divider"></div>
+          ${UI.confirmRow('グループ販売単価', `<span class="font-bold text-lg">${Fmt.yen(groupSellPrice)}</span>`, '')}
+          ${diff !== 0 ? UI.confirmRow('基準との差額', `<span class="${diff > 0 ? 'text-green' : 'text-red'}">${diff > 0 ? '+' : ''}${Fmt.yen(diff)}</span>`) : ''}
+          ${UI.confirmRow('利益率（対仕入）', Fmt.pct(profitRate))}
+        </div>
         <div class="form-group mt-1">
-          <label class="form-label">売単価を変更</label>
+          <label class="form-label">販売単価を変更</label>
           <div class="amount-input-wrap">
             <span class="amount-prefix">¥</span>
-            <input type="number" class="input input--amount" id="price-${p.product_id}" value="${sellPrice}" min="${p.buy_price}" step="500">
+            <input type="number" class="input input--amount" id="price-${p.product_id}" value="${groupSellPrice}" min="${p.buy_price}" step="100">
           </div>
+          <div class="text-xs text-gray mt-05">※ 仕入単価（${Fmt.yen(p.buy_price)}）以上で設定してください</div>
           <button class="btn btn--primary btn--sm mt-05" onclick="LeaderPages._savePrice('${p.product_id}', '${groupId}')">保存</button>
         </div>
       `);
