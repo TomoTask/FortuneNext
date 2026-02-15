@@ -739,6 +739,7 @@ const API = {
   async updateUser(data)             { this.clearCache(); return this.call('updateUser', data); },
   async resetPassword(userId, pw)    { return this.call('resetPassword', { user_id: userId, new_password: pw }); },
   async deleteUser(userId)           { this.clearCache(); return this.call('deleteUser', { user_id: userId }); },
+  async uploadReceipt(data)          { return this.call('uploadReceipt', data); },
 };
 // ═══════════════════════════════════════
 //  ユーザー画面
@@ -1391,14 +1392,36 @@ const UserPages = {
   _uploadReceipt(orderId) {
     const input = document.createElement('input');
     input.type = 'file';
-    input.accept = 'image/*';
+    input.accept = 'image/*,.pdf';
     input.onchange = async (e) => {
       const file = e.target.files[0];
       if (!file) return;
-      // デモではファイル名のみ記録
-      await API.updateOrder(orderId, { status: 'pending_receipt', receipt_url: file.name });
-      UI.toast('明細をアップロードしました');
-      App.renderPage();
+      if (file.size > 5 * 1024 * 1024) { UI.toast('ファイルは5MB以下にしてください', 'error'); return; }
+
+      UI.toast('アップロード中...', 'info');
+      
+      // ファイルをBase64に変換
+      const base64 = await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result.split(',')[1]);
+        reader.onerror = () => reject(new Error('ファイル読み込み失敗'));
+        reader.readAsDataURL(file);
+      });
+
+      const res = await API.uploadReceipt({
+        orderId: orderId,
+        fileName: file.name,
+        base64Data: base64,
+        mimeType: file.type || 'image/jpeg',
+      });
+
+      if (res?.success) {
+        UI.toast('明細をアップロードしました');
+        API.clearCache();
+        App.renderPage();
+      } else {
+        UI.toast(res?.error || 'アップロードに失敗しました', 'error');
+      }
     };
     input.click();
   },
