@@ -380,7 +380,12 @@ select.input { appearance: none; background: white url("data:image/svg+xml,%3Csv
 .order-progress__line--done { background: var(--c-success); }
 
 /* ── Receipt Info ── */
-.receipt-info { background: var(--c-gray-50); border-radius: var(--radius-sm); padding: 10px 14px; }
+.receipt-info { background: var(--c-gray-50); border-radius: var(--radius-sm); padding: 4px; }
+.receipt-link { display: flex; align-items: center; gap: 10px; padding: 12px 14px; background: white; border-radius: var(--radius-sm); text-decoration: none; color: var(--c-primary); font-weight: 700; font-size: 14px; transition: background .15s; }
+.receipt-link:hover { background: var(--c-primary-pale); }
+.receipt-link__icon { font-size: 20px; }
+.receipt-link__text { flex: 1; }
+.receipt-link__arrow { color: var(--c-gray-400); }
 
 /* ── Schedule Grid ── */
 .schedule-hint { background: #FEF3C7; border: 1px solid #FDE68A; border-radius: var(--radius-sm); padding: 6px 10px; font-size: 11px; font-weight: 600; color: #92400E; margin-bottom: 8px; }
@@ -827,6 +832,7 @@ const UserPages = {
     const maxQty = Math.min(p.remaining_qty, 100);
     const qty = this._state.purchaseQty;
     const total = (p.sell_price || 0) * qty;
+    this._state._cachedPrice = p.sell_price || 0;
 
     return `
       <button class="btn btn--ghost btn--sm mb-1" onclick="App.navigate('top')">← 戻る</button>
@@ -843,13 +849,13 @@ const UserPages = {
       ${p.remaining_qty > 0 ? UI.card(`
         <h3 class="section-title">購入数量</h3>
         <div class="qty-selector">
-          <button class="qty-btn" onclick="UserPages._setQty(${qty - 1})">−</button>
+          <button class="qty-btn" onclick="UserPages._setQty(${qty} - 1)">−</button>
           <input type="number" class="qty-input" value="${qty}" min="1" max="${maxQty}" onchange="UserPages._setQty(Number(this.value))">
-          <button class="qty-btn" onclick="UserPages._setQty(${qty + 1})">+</button>
+          <button class="qty-btn" onclick="UserPages._setQty(${qty} + 1)">+</button>
         </div>
         <div class="text-center mt-1">
-          <div class="text-2xl font-bold">${Fmt.yen(total)}</div>
-          <div class="text-xs text-gray">${Fmt.yen(p.sell_price)} × ${qty}個</div>
+          <div class="text-2xl font-bold qty-total-value">${Fmt.yen(total)}</div>
+          <div class="text-xs text-gray qty-total-sub">${Fmt.yen(p.sell_price)} × ${qty}個</div>
         </div>
         <button class="btn btn--primary btn--full mt-1" onclick="UserPages._startPurchase()">購入手続きへ →</button>
       `) : UI.card(`<div class="text-center text-gray">この商品は完売しました</div>`)}`;
@@ -857,7 +863,16 @@ const UserPages = {
 
   _setQty(n) {
     this._state.purchaseQty = Math.max(1, Math.min(n, 100));
-    App.renderPage();
+    // DOM直接更新（API再取得なし）
+    const qtyInput = document.querySelector('.qty-input');
+    const totalEl = document.querySelector('.qty-total-value');
+    const subEl = document.querySelector('.qty-total-sub');
+    if (qtyInput) qtyInput.value = this._state.purchaseQty;
+    if (totalEl && this._state._cachedPrice) {
+      const total = this._state._cachedPrice * this._state.purchaseQty;
+      totalEl.textContent = Fmt.yen(total);
+      if (subEl) subEl.textContent = Fmt.yen(this._state._cachedPrice) + ' × ' + this._state.purchaseQty + '個';
+    }
   },
 
   _startPurchase() {
@@ -932,9 +947,8 @@ const UserPages = {
 
   _setBalance(n) {
     const balance = Auth.currentUser?.reinvest_balance || 0;
-    const pid = this._state.selectedProduct;
     this._state.balanceUsed = Math.max(0, Math.min(n, balance));
-    App.renderPage();
+    App.renderPage({ soft: true });
   },
 
   // Step 2: 最終確認
@@ -1362,7 +1376,8 @@ const UserPages = {
           </div>
           <div class="order-card__actions">
             ${canReturn ? `<button class="btn btn--outline btn--sm" onclick="UserPages.goReturn('${o.order_id}')">お戻し申請</button>` : ''}
-            ${needUpload ? `<button class="btn btn--primary btn--sm" onclick="UserPages._uploadReceipt('${o.order_id}')">明細アップロード</button>` : ''}
+            ${needUpload && !o.receipt_url ? `<button class="btn btn--primary btn--sm" onclick="UserPages._uploadReceipt('${o.order_id}')">明細アップロード</button>` : ''}
+            ${o.receipt_url ? `<a href="${o.receipt_url}" target="_blank" rel="noopener" class="btn btn--outline btn--sm">📎 明細を見る</a>` : ''}
           </div>
         </div>`;
       });
@@ -1571,8 +1586,11 @@ const AdminPages = {
       html += UI.card(`
         <h3 class="section-title">📎 振込明細</h3>
         <div class="receipt-info">
-          <div class="text-sm">${o.receipt_url}</div>
-          <div class="text-xs text-gray mt-05">ユーザーがアップロード済み</div>
+          <a href="${o.receipt_url}" target="_blank" rel="noopener" class="receipt-link">
+            <span class="receipt-link__icon">🖼️</span>
+            <span class="receipt-link__text">明細を表示する</span>
+            <span class="receipt-link__arrow">→</span>
+          </a>
         </div>
       `);
     }
@@ -2473,14 +2491,14 @@ const App = {
     this.renderPage();
   },
 
-  async renderPage() {
+  async renderPage(opts = {}) {
     const role = Auth.getRole();
     const pageId = this.currentPage;
     const container = $('#page-content');
     if (!container) return;
 
-    // スケルトン表示
-    container.innerHTML = UI.skeleton(5);
+    // soft: ローカル状態変更のみ（スケルトン非表示）
+    if (!opts.soft) container.innerHTML = UI.skeleton(5);
 
     try {
       let html = '';
