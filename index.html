@@ -3,10 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<meta name="theme-color" content="#0C1D3F">
-<meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<title>出資管理システム</title>
+<title>枠カツ</title>
 <style>
 /* ═══════════════════════════════════════════════
    出資管理システム v3.0 — Production Design
@@ -1101,23 +1098,153 @@ select.input {
   margin-bottom: 10px;
   display: none;
 }
+
 </style>
 </head>
 <body>
 <div id="app"></div>
 <script>
+// ── api.js ──
 // ═══════════════════════════════════════
-//  設定
+//  API通信モジュール（本番専用）
 // ═══════════════════════════════════════
 
-const CONFIG = {
-  // ★ GASデプロイURL（デプロイ後にここを書き換え）
-  API_URL: 'https://script.google.com/macros/s/AKfycbzD5_qptnAccJnW8XzEgGxbW_7Rz1BT9SpzovLpxMzXEIL9emSGgag-1fZXtxgMFxmx1A/exec',
+const API = {
+  _cache: new Map(),
 
-  PAYMENT_DEADLINE_DAYS: 2,
-  CACHE_TTL_MS: 5 * 60 * 1000,
+  /** GAS APIを呼び出す */
+  async call(action, params = {}) {
+    return this._fetch(action, params);
+  },
+
+  /** HTTPリクエスト */
+  async _fetch(action, params) {
+    const token = Auth.getToken();
+    const body = { ...params, action, token };
+
+    try {
+      App.setLoading(true);
+
+      const res = await fetch(CONFIG.API_URL, {
+        method: 'POST',
+        redirect: 'follow',
+        body: JSON.stringify(body),
+        headers: { 'Content-Type': 'text/plain' },
+      });
+
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+
+      // セッション切れ
+      if (data.code === 'AUTH_REQUIRED') {
+        Auth.clear();
+        App.showLogin();
+        return data;
+      }
+      return data;
+    } catch (err) {
+      console.error('API Error:', err);
+      return { success: false, error: 'サーバーに接続できません。ネットワーク接続を確認してください。' };
+    } finally {
+      App.setLoading(false);
+    }
+  },
+
+  /** キャッシュ付き呼び出し */
+  async cachedCall(action, params = {}) {
+    const key = action + JSON.stringify(params);
+    const cached = this._cache.get(key);
+    if (cached && Date.now() - cached.time < CONFIG.CACHE_TTL_MS) return cached.data;
+    const data = await this.call(action, params);
+    this._cache.set(key, { data, time: Date.now() });
+    return data;
+  },
+
+  clearCache() { this._cache.clear(); },
+
+  // ── 便利メソッド ──
+  async login(loginId, password)     { return this.call('login', { loginId, password }); },
+  async logout()                     { return this.call('logout'); },
+  async getProducts()                { return this.cachedCall('getProducts'); },
+  async getProduct(productId)        { return this.call('getProduct', { productId }); },
+  async createProduct(data)          { this.clearCache(); return this.call('createProduct', data); },
+  async updateProduct(data)          { this.clearCache(); return this.call('updateProduct', data); },
+  async getGroupPrices(productId)    { return this.call('getGroupPrices', { productId }); },
+  async updateGroupPrice(data)       { return this.call('updateGroupPrice', data); },
+  async getOrders(filters = {})      { return this.call('getOrders', filters); },
+  async createOrder(data)            { this.clearCache(); return this.call('createOrder', data); },
+  async updateOrder(orderId, data)   { return this.call('updateOrder', { orderId, ...data }); },
+  async getReturns(filters = {})     { return this.call('getReturns', filters); },
+  async createReturn(data)           { this.clearCache(); return this.call('createReturn', data); },
+  async updateReturn(returnId, data) { return this.call('updateReturn', { returnId, ...data }); },
+  async getThreads()                 { return this.call('getThreads'); },
+  async getMessages(threadId)        { return this.call('getMessages', { threadId }); },
+  async sendMessage(data)            { return this.call('sendMessage', data); },
+  async getDashboard()               { return this.cachedCall('getDashboard'); },
+  async getUsers()                   { return this.call('getUsers'); },
+  async getGroups()                  { return this.cachedCall('getGroups'); },
+  async getSchedule()                { return this.cachedCall('getSchedule'); },
+  async updateProfile(data)          { this.clearCache(); return this.call('updateProfile', data); },
+  async createUser(data)             { this.clearCache(); return this.call('createUser', data); },
+  async updateUser(data)             { this.clearCache(); return this.call('updateUser', data); },
+  async resetPassword(userId, pw)    { return this.call('resetPassword', { user_id: userId, new_password: pw }); },
+  async deleteUser(userId)           { this.clearCache(); return this.call('deleteUser', { user_id: userId }); },
+  async uploadReceipt(data)          { return this.call('uploadReceipt', data); },
+  async getSettings()                { return this.cachedCall('getSettings'); },
+  async saveSettings(settings)       { this.clearCache(); return this.call('saveSettings', { settings }); },
 };
 
+// ── auth.js ──
+// ═══════════════════════════════════════
+//  認証モジュール（本番対応）
+// ═══════════════════════════════════════
+
+const Auth = {
+  currentUser: null,
+  _token: null,
+
+  init() {
+    const saved = localStorage.getItem('auth_token');
+    const user = localStorage.getItem('auth_user');
+    if (saved && user) {
+      this._token = saved;
+      try { this.currentUser = JSON.parse(user); } catch (_) { this.clear(); }
+    }
+  },
+
+  isLoggedIn() { return !!this._token && !!this.currentUser; },
+  getToken()   { return this._token; },
+  getRole()    { return this.currentUser?.role || ''; },
+  getGroupId() { return this.currentUser?.group_id || ''; },
+  getUserId()  { return this.currentUser?.user_id || ''; },
+  getGroupName() { return this.currentUser?.group_name || ''; },
+
+  setSession(token, user) {
+    this._token = token;
+    this.currentUser = user;
+    localStorage.setItem('auth_token', token);
+    localStorage.setItem('auth_user', JSON.stringify(user));
+  },
+
+  clear() {
+    this._token = null;
+    this.currentUser = null;
+    localStorage.removeItem('auth_token');
+    localStorage.removeItem('auth_user');
+  },
+
+  /** ログイン後にユーザー情報を最新に更新 */
+  async refreshUser() {
+    if (!this._token) return;
+    const res = await API.call('me');
+    if (res?.success && res.user) {
+      this.currentUser = { ...this.currentUser, ...res.user };
+      localStorage.setItem('auth_user', JSON.stringify(this.currentUser));
+    }
+  },
+};
+
+// ── utils.js ──
 // ═══════════════════════════════════════
 //  DOM ユーティリティ
 // ═══════════════════════════════════════
@@ -1157,7 +1284,7 @@ const Fmt = {
     return { pending_payment: '入金待ち', pending_receipt: '明細確認中', confirmed: '確定', cancelled: 'キャンセル' }[s] || s;
   },
   returnStatus(s) {
-    return { unprocessed: '未処理', applied: '申請済', processing: '処理中', remitted: '送金済', handed: '手渡し済' }[s] || s;
+    return { unprocessed: '未処理', remitted: '送金済', handed: '手渡し済' }[s] || s;
   },
   productStatus(s) {
     return { draft: '下書き', active: '販売中', closed: '締切', completed: '完了' }[s] || s;
@@ -1165,12 +1292,13 @@ const Fmt = {
   statusColor(s) {
     return {
       pending_payment: 'red', pending_receipt: 'gold', confirmed: 'green', cancelled: 'gray',
-      unprocessed: 'red', applied: 'gold', processing: 'blue', remitted: 'green', handed: 'green',
+      unprocessed: 'red', remitted: 'green', handed: 'green',
       active: 'green', closed: 'gray', draft: 'gold', completed: 'blue',
     }[s] || 'gray';
   },
 };
 
+// ── components.js ──
 // ═══════════════════════════════════════
 //  共通UIコンポーネント v3.0
 // ═══════════════════════════════════════
@@ -1262,146 +1390,9 @@ const UI = {
   },
 };
 
+// ── user.js ──
 // ═══════════════════════════════════════
-//  認証モジュール（本番対応）
-// ═══════════════════════════════════════
-
-const Auth = {
-  currentUser: null,
-  _token: null,
-
-  init() {
-    const saved = localStorage.getItem('auth_token');
-    const user = localStorage.getItem('auth_user');
-    if (saved && user) {
-      this._token = saved;
-      try { this.currentUser = JSON.parse(user); } catch (_) { this.clear(); }
-    }
-  },
-
-  isLoggedIn() { return !!this._token && !!this.currentUser; },
-  getToken()   { return this._token; },
-  getRole()    { return this.currentUser?.role || ''; },
-  getGroupId() { return this.currentUser?.group_id || ''; },
-  getUserId()  { return this.currentUser?.user_id || ''; },
-  getGroupName() { return this.currentUser?.group_name || ''; },
-
-  setSession(token, user) {
-    this._token = token;
-    this.currentUser = user;
-    localStorage.setItem('auth_token', token);
-    localStorage.setItem('auth_user', JSON.stringify(user));
-  },
-
-  clear() {
-    this._token = null;
-    this.currentUser = null;
-    localStorage.removeItem('auth_token');
-    localStorage.removeItem('auth_user');
-  },
-
-  /** ログイン後にユーザー情報を最新に更新 */
-  async refreshUser() {
-    if (!this._token) return;
-    const res = await API.call('me');
-    if (res?.success && res.user) {
-      this.currentUser = { ...this.currentUser, ...res.user };
-      localStorage.setItem('auth_user', JSON.stringify(this.currentUser));
-    }
-  },
-};
-
-// ═══════════════════════════════════════
-//  API通信モジュール（本番専用）
-// ═══════════════════════════════════════
-
-const API = {
-  _cache: new Map(),
-
-  /** GAS APIを呼び出す */
-  async call(action, params = {}) {
-    return this._fetch(action, params);
-  },
-
-  /** HTTPリクエスト */
-  async _fetch(action, params) {
-    const token = Auth.getToken();
-    const body = { ...params, action, token };
-
-    try {
-      App.setLoading(true);
-
-      const res = await fetch(CONFIG.API_URL, {
-        method: 'POST',
-        redirect: 'follow',
-        body: JSON.stringify(body),
-        headers: { 'Content-Type': 'text/plain' },
-      });
-
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = await res.json();
-
-      // セッション切れ
-      if (data.code === 'AUTH_REQUIRED') {
-        Auth.clear();
-        App.showLogin();
-        return data;
-      }
-      return data;
-    } catch (err) {
-      console.error('API Error:', err);
-      return { success: false, error: 'サーバーに接続できません。ネットワーク接続を確認してください。' };
-    } finally {
-      App.setLoading(false);
-    }
-  },
-
-  /** キャッシュ付き呼び出し */
-  async cachedCall(action, params = {}) {
-    const key = action + JSON.stringify(params);
-    const cached = this._cache.get(key);
-    if (cached && Date.now() - cached.time < CONFIG.CACHE_TTL_MS) return cached.data;
-    const data = await this.call(action, params);
-    this._cache.set(key, { data, time: Date.now() });
-    return data;
-  },
-
-  clearCache() { this._cache.clear(); },
-
-  // ── 便利メソッド ──
-  async login(loginId, password)     { return this.call('login', { loginId, password }); },
-  async logout()                     { return this.call('logout'); },
-  async getProducts()                { return this.cachedCall('getProducts'); },
-  async getProduct(productId)        { return this.call('getProduct', { productId }); },
-  async createProduct(data)          { this.clearCache(); return this.call('createProduct', data); },
-  async updateProduct(data)          { this.clearCache(); return this.call('updateProduct', data); },
-  async getGroupPrices(productId)    { return this.call('getGroupPrices', { productId }); },
-  async updateGroupPrice(data)       { return this.call('updateGroupPrice', data); },
-  async getOrders(filters = {})      { return this.call('getOrders', filters); },
-  async createOrder(data)            { this.clearCache(); return this.call('createOrder', data); },
-  async updateOrder(orderId, data)   { return this.call('updateOrder', { orderId, ...data }); },
-  async getReturns(filters = {})     { return this.call('getReturns', filters); },
-  async createReturn(data)           { this.clearCache(); return this.call('createReturn', data); },
-  async updateReturn(returnId, data) { return this.call('updateReturn', { returnId, ...data }); },
-  async getThreads()                 { return this.call('getThreads'); },
-  async getMessages(threadId)        { return this.call('getMessages', { threadId }); },
-  async sendMessage(data)            { return this.call('sendMessage', data); },
-  async getDashboard()               { return this.cachedCall('getDashboard'); },
-  async getUsers()                   { return this.call('getUsers'); },
-  async getGroups()                  { return this.cachedCall('getGroups'); },
-  async getSchedule()                { return this.cachedCall('getSchedule'); },
-  async updateProfile(data)          { this.clearCache(); return this.call('updateProfile', data); },
-  async createUser(data)             { this.clearCache(); return this.call('createUser', data); },
-  async updateUser(data)             { this.clearCache(); return this.call('updateUser', data); },
-  async resetPassword(userId, pw)    { return this.call('resetPassword', { user_id: userId, new_password: pw }); },
-  async deleteUser(userId)           { this.clearCache(); return this.call('deleteUser', { user_id: userId }); },
-  async uploadReceipt(data)          { return this.call('uploadReceipt', data); },
-  async getSettings()                { return this.cachedCall('getSettings'); },
-  async saveSettings(settings)       { this.clearCache(); return this.call('saveSettings', { settings }); },
-};
-
-// ═══════════════════════════════════════
-//  ユーザー画面 - 全フロー
+//  ユーザー画面 - 全フロー v4.0
 // ═══════════════════════════════════════
 
 const UserPages = {
@@ -1409,7 +1400,9 @@ const UserPages = {
   _reset() {
     this._state = {
       selectedProduct: null,
-      purchaseStep: 0, purchaseQty: 1, balanceUsed: 0,
+      purchaseStep: 0, purchaseQty: 10, balanceUsed: 0,
+      paymentMethod: 'transfer',
+      iouRequested: false, iouAddress: '', iouName: '',
       returnStep: 0, returnOrder: null, returnAction: null,
       returnAmount: 0, returnMethod: null, returnDate: null,
       _editingBank: false,
@@ -1417,29 +1410,20 @@ const UserPages = {
   },
 
   // ════════════════════════════════
-  //  TOP画面 - 商品一覧
+  //  TOP画面
   // ════════════════════════════════
   async renderTop() {
     const products = await API.getProducts();
     const user = Auth.currentUser;
     const balance = user?.reinvest_balance || 0;
     let html = '';
-
     if (balance > 0) {
-      html += `<div class="balance-banner">
-        <div class="balance-banner__amount">${Fmt.yen(balance)}</div>
-        <div class="balance-banner__label">運用継続中の残高</div>
-      </div>`;
+      html += `<div class="balance-banner"><div class="balance-banner__amount">${Fmt.yen(balance)}</div><div class="balance-banner__label">運用継続中の残高</div></div>`;
     }
-
     const list = Array.isArray(products) ? products : [];
     const active = list.filter(p => p.status === 'active');
     const closed = list.filter(p => p.status !== 'active');
-
-    if (active.length === 0 && closed.length === 0) {
-      html += UI.empty('販売中の商品はありません', '📦');
-    }
-
+    if (active.length === 0 && closed.length === 0) html += UI.empty('販売中の商品はありません', '📦');
     active.forEach(p => { html += this._productCard(p, true); });
     if (closed.length > 0) {
       html += `<div class="text-xs text-gray mt-2 mb-05">過去の商品</div>`;
@@ -1450,71 +1434,59 @@ const UserPages = {
 
   _productCard(p, active) {
     const remaining = p.remaining_qty > 0 ? `残り${p.remaining_qty}個` : '完売';
-    return `
-      <div class="product-card ${active ? '' : 'product-card--closed'}" onclick="${active ? `UserPages.goDetail('${p.product_id}')` : ''}">
-        <div class="product-card__header">
-          <div class="product-card__name">${p.name}</div>
-          ${UI.badge(Fmt.productStatus(p.status), Fmt.statusColor(p.status))}
-        </div>
-        <div class="product-card__body">
-          <div class="product-card__price">${Fmt.yen(p.sell_price || p.buy_price)}<span class="product-card__unit">/個</span></div>
-        </div>
-        <div class="product-card__footer">
-          <span>${remaining}</span>
-          <span>〆 ${Fmt.date(p.deadline)}</span>
-        </div>
-      </div>`;
+    return `<div class="product-card ${!active ? 'product-card--closed' : ''}" onclick="${active ? `UserPages.goDetail('${p.product_id}')` : ''}">
+      <div class="product-card__header"><span class="product-card__name">${p.name}</span>${UI.badge(Fmt.productStatus(p.status), Fmt.statusColor(p.status))}</div>
+      <div class="product-card__body"><span class="product-card__price">${Fmt.yen(p.sell_price)}</span><span class="product-card__unit">/個</span></div>
+      <div class="product-card__footer"><span>${remaining}</span><span>締切: ${Fmt.date(p.deadline, true)}</span></div>
+    </div>`;
   },
 
-  goDetail(pid) {
-    this._reset();
-    this._state.selectedProduct = pid;
-    App.currentPage = 'detail';
-    App.renderPage();
-  },
+  goDetail(pid) { this._reset(); this._state.selectedProduct = pid; App.currentPage = 'detail'; App.renderPage(); },
 
   // ════════════════════════════════
-  //  商品詳細
+  //  商品詳細（数量ルール付き）
   // ════════════════════════════════
   async renderDetail() {
     const pid = this._state.selectedProduct;
     if (!pid) return this.renderTop();
     const p = await API.getProduct(pid);
     if (!p || p.error) return UI.empty('商品が見つかりません');
-
-    const maxQty = Math.min(p.remaining_qty, 100);
+    const maxQty = Math.min(p.remaining_qty, 999);
     const qty = this._state.purchaseQty;
     const price = p.sell_price || 0;
     const total = price * qty;
     this._state._cachedPrice = price;
+    const canPurchase = qty >= 10 && qty <= maxQty;
+    const methodNote = qty >= 50 ? '銀行振込 または 現金手渡し' : qty >= 10 ? '銀行振込のみ' : '';
 
     return `
       <button class="btn btn--ghost btn--sm mb-1" onclick="App.navigate('top')">← 戻る</button>
-      ${UI.card(`
-        <h2 class="text-lg font-bold">${p.name}</h2>
-        <div class="mt-1">
-          ${UI.confirmRow('販売価格', Fmt.yen(price))}
-          ${UI.confirmRow('残り在庫', Fmt.qty(p.remaining_qty))}
-          ${UI.confirmRow('締切', Fmt.date(p.deadline, true))}
-        </div>
-      `)}
-      ${p.remaining_qty > 0 ? UI.card(`
+      ${UI.card(`<h2 class="text-lg font-bold">${p.name}</h2><div class="mt-1">${UI.confirmRow('販売価格', Fmt.yen(price))}${UI.confirmRow('残り在庫', Fmt.qty(p.remaining_qty))}${UI.confirmRow('締切', Fmt.date(p.deadline, true))}</div>`)}
+      ${p.remaining_qty >= 10 ? UI.card(`
         <h3 class="section-title">購入数量</h3>
         <div class="qty-selector">
           <button class="qty-btn" onclick="UserPages._setQty(${qty} - 1)">−</button>
-          <input type="number" class="qty-input" value="${qty}" min="1" max="${maxQty}" onchange="UserPages._setQty(Number(this.value))">
+          <input type="number" class="qty-input" value="${qty}" min="10" max="${maxQty}" onchange="UserPages._setQty(Number(this.value))">
           <button class="qty-btn" onclick="UserPages._setQty(${qty} + 1)">+</button>
         </div>
         <div class="text-center mt-1">
           <div class="text-2xl font-bold qty-total-value">${Fmt.yen(total)}</div>
           <div class="text-xs text-gray qty-total-sub">${Fmt.yen(price)} × ${qty}個</div>
         </div>
-        <button class="btn btn--primary btn--full mt-1" onclick="UserPages._startPurchase()">購入手続きへ →</button>
-      `) : UI.card(`<div class="text-center text-gray">この商品は完売しました</div>`)}`;
+        <div class="info-box mt-1">
+          <div class="text-xs font-bold mb-05">📋 購入ルール</div>
+          <div class="text-xs">・10個以上：銀行振込で購入可</div>
+          <div class="text-xs">・50個以上：銀行振込 or 現金手渡しで購入可</div>
+          <div class="text-xs">・10個未満は購入不可</div>
+        </div>
+        ${qty < 10 ? '<div class="warning-box mt-1">⚠️ 最低10個以上から購入できます</div>' : ''}
+        ${methodNote && qty >= 10 ? `<div class="text-xs text-gray text-center mt-05">お支払い方法: ${methodNote}</div>` : ''}
+        <button class="btn btn--primary btn--full mt-1" ${!canPurchase ? 'disabled' : ''} onclick="UserPages._startPurchase()">購入手続きへ →</button>
+      `) : UI.card(`<div class="text-center text-gray">この商品は在庫不足です（残り${p.remaining_qty}個、最低10個必要）</div>`)}`;
   },
 
   _setQty(n) {
-    this._state.purchaseQty = Math.max(1, Math.min(n, 100));
+    this._state.purchaseQty = Math.max(1, Math.min(n, 999));
     const el = document.querySelector('.qty-input');
     const tv = document.querySelector('.qty-total-value');
     const ts = document.querySelector('.qty-total-sub');
@@ -1527,11 +1499,15 @@ const UserPages = {
   },
 
   _startPurchase() {
+    const qty = this._state.purchaseQty;
+    if (qty < 10) { UI.toast('10個以上から購入できます', 'error'); return; }
+    if (qty < 50) this._state.paymentMethod = 'transfer';
     const balance = Auth.currentUser?.reinvest_balance || 0;
-    this._state.purchaseStep = balance > 0 ? 1 : 2;
+    if (balance > 0) this._state.purchaseStep = 1;
+    else if (qty >= 50) this._state.purchaseStep = 1.5;
+    else this._state.purchaseStep = 2;
     this._state.balanceUsed = 0;
-    App.currentPage = 'purchase';
-    App.renderPage();
+    App.currentPage = 'purchase'; App.renderPage();
   },
 
   // ════════════════════════════════
@@ -1544,23 +1520,22 @@ const UserPages = {
     const qty = this._state.purchaseQty;
     const total = (p.sell_price || 0) * qty;
     const balance = Auth.currentUser?.reinvest_balance || 0;
-
     if (step === 1) return this._purchaseBalance(p, total, balance);
+    if (step === 1.5) return this._purchaseMethod(p, total);
     if (step === 2) return this._purchaseConfirm(p, total, balance);
     if (step === 3) return this._purchaseDone(p, total);
     return this.renderDetail();
   },
 
-  // 購入Step1: 残高充当
+  // Step1: 残高充当
   _purchaseBalance(p, total, balance) {
     const used = this._state.balanceUsed;
     const maxUse = Math.min(balance, total);
     const transfer = total - used;
     const bPct = total > 0 ? Math.round(used / total * 100) : 0;
-
     return `
       <button class="btn btn--ghost btn--sm mb-1" onclick="App.currentPage='detail';App.renderPage()">← 戻る</button>
-      ${UI.steps(1, 3)}
+      ${UI.steps(1, 4)}
       ${UI.card(`
         <h3 class="section-title">残高を使いますか？</h3>
         <div class="balance-status">
@@ -1569,51 +1544,68 @@ const UserPages = {
         </div>
         <div class="form-group mt-1">
           <label class="form-label">充当する金額</label>
-          <div class="amount-input-wrap">
-            <span class="amount-prefix">¥</span>
-            <input type="number" class="input input--amount" value="${used}" min="0" max="${maxUse}" step="1000" onchange="UserPages._setBalance(Number(this.value))">
-          </div>
+          <div class="amount-input-wrap"><span class="amount-prefix">¥</span><input type="number" class="input input--amount" value="${used}" min="0" max="${maxUse}" step="1000" onchange="UserPages._setBalance(Number(this.value))"></div>
           <input type="range" class="range-slider" min="0" max="${maxUse}" step="1000" value="${used}" oninput="UserPages._setBalance(Number(this.value))">
           <div class="range-labels"><span>¥0</span><span>${Fmt.yen(maxUse)}</span></div>
           <button class="btn btn--outline btn--sm mt-05" onclick="UserPages._setBalance(${maxUse})">残高を全額使う</button>
         </div>
-        ${used > 0 ? `
-        <div class="payment-bar mt-1">
-          <div class="payment-bar__seg payment-bar__seg--green" style="width:${bPct}%"></div>
-          <div class="payment-bar__seg payment-bar__seg--blue" style="width:${100 - bPct}%"></div>
-        </div>
-        <div class="payment-split">
-          <div class="payment-split__item payment-split__item--green"><div class="text-xs">残高充当</div><div class="font-bold">${Fmt.yen(used)}</div></div>
-          <div class="payment-split__item payment-split__item--blue"><div class="text-xs">銀行振込</div><div class="font-bold">${Fmt.yen(transfer)}</div></div>
-        </div>` : ''}
+        ${used > 0 ? `<div class="payment-bar mt-1"><div class="payment-bar__seg payment-bar__seg--green" style="width:${bPct}%"></div><div class="payment-bar__seg payment-bar__seg--blue" style="width:${100 - bPct}%"></div></div>
+        <div class="payment-split"><div class="payment-split__item payment-split__item--green"><div class="text-xs">残高充当</div><div class="font-bold">${Fmt.yen(used)}</div></div><div class="payment-split__item payment-split__item--blue"><div class="text-xs">追加支払い</div><div class="font-bold">${Fmt.yen(transfer)}</div></div></div>` : ''}
         <div class="btn-group mt-1">
-          <button class="btn btn--primary btn--full" onclick="UserPages._state.purchaseStep=2;App.renderPage()">確認画面へ →</button>
-          <button class="btn btn--ghost btn--full" onclick="UserPages._state.balanceUsed=0;UserPages._state.purchaseStep=2;App.renderPage()">残高を使わずに購入</button>
+          <button class="btn btn--primary btn--full" onclick="UserPages._afterBalance()">次へ →</button>
+          <button class="btn btn--ghost btn--full" onclick="UserPages._state.balanceUsed=0;UserPages._afterBalance()">残高を使わずに購入</button>
         </div>
       `)}`;
   },
 
-  _setBalance(n) {
-    const balance = Auth.currentUser?.reinvest_balance || 0;
-    this._state.balanceUsed = Math.max(0, Math.min(n, balance));
-    App.renderPage({ soft: true });
+  _setBalance(n) { this._state.balanceUsed = Math.max(0, Math.min(n, Auth.currentUser?.reinvest_balance || 0)); App.renderPage({ soft: true }); },
+
+  _afterBalance() {
+    const qty = this._state.purchaseQty;
+    if (qty >= 50) this._state.purchaseStep = 1.5;
+    else { this._state.paymentMethod = 'transfer'; this._state.purchaseStep = 2; }
+    App.renderPage();
   },
 
-  // 購入Step2: 最終確認
+  // Step1.5: 支払方法選択（50個以上）
+  _purchaseMethod(p, total) {
+    const balance = Auth.currentUser?.reinvest_balance || 0;
+    const prevStep = balance > 0 ? 1 : 0;
+    return `
+      <button class="btn btn--ghost btn--sm mb-1" onclick="${prevStep ? 'UserPages._state.purchaseStep=1;App.renderPage()' : "App.currentPage='detail';App.renderPage()"}">← 戻る</button>
+      ${UI.steps(2, 4)}
+      ${UI.card(`
+        <h3 class="section-title">お支払い方法を選択</h3>
+        <div class="text-sm text-gray mb-1">${this._state.purchaseQty}個のご注文（${Fmt.yen(total)}）</div>
+        <div class="choice-group">
+          <button class="choice-btn" onclick="UserPages._state.paymentMethod='transfer';UserPages._state.purchaseStep=2;App.renderPage()">
+            <div class="choice-btn__title">🏦 銀行振込</div>
+            <div class="choice-btn__desc">口座に振り込んでお支払い（借用書の発行が可能）</div>
+          </button>
+          <button class="choice-btn" onclick="UserPages._state.paymentMethod='cash';UserPages._state.iouRequested=false;UserPages._state.purchaseStep=2;App.renderPage()">
+            <div class="choice-btn__title">💵 現金手渡し</div>
+            <div class="choice-btn__desc">対面で現金をお渡しします</div>
+          </button>
+        </div>
+      `)}`;
+  },
+
+  // Step2: 最終確認（+借用書）
   async _purchaseConfirm(p, total, balance) {
     const used = this._state.balanceUsed;
     const transfer = total - used;
     const qty = this._state.purchaseQty;
-    const prevStep = balance > 0 ? 1 : 0;
-
-    // 管理者の振込先を取得
-    const settings = await API.getSettings();
-    const bank = (typeof settings === 'object' && !settings.error) ? settings : {};
+    const method = this._state.paymentMethod;
+    const isTransfer = method === 'transfer';
+    const iou = this._state.iouRequested;
+    let backStep = qty >= 50 ? 1.5 : (balance > 0 ? 1 : 0);
+    let bank = {};
+    if (isTransfer) { const s = await API.getSettings(); bank = (typeof s === 'object' && !s.error) ? s : {}; }
     const hasBankInfo = bank.bank_name && bank.bank_number;
 
     return `
-      <button class="btn btn--ghost btn--sm mb-1" onclick="UserPages._state.purchaseStep=${prevStep || 0};${prevStep ? "App.renderPage()" : "App.currentPage='detail';App.renderPage()"}">← 戻る</button>
-      ${UI.steps(2, 3)}
+      <button class="btn btn--ghost btn--sm mb-1" onclick="${backStep ? `UserPages._state.purchaseStep=${backStep};App.renderPage()` : "App.currentPage='detail';App.renderPage()"}">← 戻る</button>
+      ${UI.steps(3, 4)}
       ${UI.card(`
         <h3 class="section-title">注文内容の確認</h3>
         ${UI.confirmRow('商品', p.name)}
@@ -1621,111 +1613,80 @@ const UserPages = {
         ${UI.confirmRow('単価', Fmt.yen(p.sell_price))}
         ${UI.divider()}
         ${UI.confirmRow('合計金額', Fmt.yen(total), 'font-bold')}
-        ${used > 0 ? `
-          ${UI.confirmRow('💰 残高充当', '− ' + Fmt.yen(used), 'text-green')}
-          ${UI.confirmRow('🏦 銀行振込額', Fmt.yen(transfer), 'font-bold text-lg')}
-          <div class="text-xs text-gray mt-05">充当後の残高: ${Fmt.yen(balance - used)}</div>
+        ${used > 0 ? `${UI.confirmRow('💰 残高充当', '− ' + Fmt.yen(used), 'text-green')}${UI.confirmRow(isTransfer ? '🏦 振込額' : '💵 手渡し額', Fmt.yen(transfer), 'font-bold text-lg')}<div class="text-xs text-gray mt-05">充当後の残高: ${Fmt.yen(balance - used)}</div>` : ''}
+        ${UI.confirmRow('支払方法', isTransfer ? '銀行振込' : '現金手渡し')}
+        ${isTransfer && transfer > 0 ? `
+          <div class="info-box mt-1"><div class="text-sm font-bold mb-05">お支払い手順</div><div class="text-xs">① 予約確定 → ② 銀行振込（${Fmt.yen(transfer)}）→ ③ 明細アップロード → ④ 確認</div></div>
+          ${hasBankInfo ? `<div class="bank-info mt-1"><div class="text-xs font-bold text-gray mb-05">振込先口座</div>${UI.confirmRow('銀行', bank.bank_name)}${bank.bank_branch ? UI.confirmRow('支店', bank.bank_branch) : ''}${UI.confirmRow('口座', (bank.bank_type || '普通') + ' ' + bank.bank_number)}${bank.bank_holder ? UI.confirmRow('名義', bank.bank_holder) : ''}</div>` : ''}
         ` : ''}
-        ${transfer > 0 ? `
-          <div class="info-box mt-1">
-            <div class="text-sm font-bold mb-05">お支払い手順</div>
-            <div class="text-xs">① 予約確定 → ② 銀行振込（${Fmt.yen(transfer)}）→ ③ 明細アップロード → ④ 確認</div>
-          </div>
-          ${hasBankInfo ? `
-          <div class="bank-info mt-1">
-            <div class="text-xs font-bold text-gray mb-05">振込先口座</div>
-            ${UI.confirmRow('銀行', bank.bank_name)}
-            ${bank.bank_branch ? UI.confirmRow('支店', bank.bank_branch) : ''}
-            ${UI.confirmRow('口座', (bank.bank_type || '普通') + ' ' + bank.bank_number)}
-            ${bank.bank_holder ? UI.confirmRow('名義', bank.bank_holder) : ''}
-          </div>` : ''}
-        ` : `
-          <div class="success-box mt-1">✅ 残高のみで購入完了 — 振込は不要です</div>
-        `}
-        <button class="btn btn--primary btn--full mt-1" onclick="UserPages._confirmPurchase()">
-          ${transfer > 0 ? `予約を確定する（振込額: ${Fmt.yen(transfer)}）` : '購入を確定する（残高払い）'}
-        </button>
-      `)}`;
+        ${!isTransfer ? '<div class="info-box mt-1"><div class="text-xs">現金手渡しの場合、管理者と直接やり取りしてお支払いください。</div></div>' : ''}
+        ${transfer === 0 ? '<div class="success-box mt-1">✅ 残高のみで購入完了 — 追加支払いは不要です</div>' : ''}
+      `)}
+      ${isTransfer ? UI.card(`
+        <h3 class="section-title">📄 借用書について</h3>
+        <div class="text-sm text-gray mb-1">銀行振込でのご購入の場合、借用書を発行できます</div>
+        <label style="display:flex;align-items:center;gap:10px;padding:12px 0;cursor:pointer;-webkit-tap-highlight-color:transparent">
+          <input type="checkbox" id="iou-check" ${iou ? 'checked' : ''} onchange="UserPages._state.iouRequested=this.checked;App.renderPage({soft:true})" style="width:20px;height:20px;accent-color:var(--blue-600)">
+          <span class="text-sm font-bold">借用書の発行を希望する</span>
+        </label>
+        ${iou ? `
+          <div class="form-group"><label class="form-label">宛名（借主名）<span class="text-red">*</span></label><input type="text" class="input" id="iou-name" value="${this._state.iouName}" placeholder="例: 山田 太郎" onchange="UserPages._state.iouName=this.value"></div>
+          <div class="form-group"><label class="form-label">住所 <span class="text-red">*</span></label><input type="text" class="input" id="iou-addr" value="${this._state.iouAddress}" placeholder="例: 東京都渋谷区..." onchange="UserPages._state.iouAddress=this.value"></div>
+        ` : ''}
+      `) : ''}
+      ${UI.card(`<button class="btn btn--primary btn--full btn--lg" onclick="UserPages._confirmPurchase()">
+        ${transfer > 0 ? (isTransfer ? `予約を確定する（振込額: ${Fmt.yen(transfer)}）` : `予約を確定する（手渡し: ${Fmt.yen(transfer)}）`) : '購入を確定する（残高払い）'}
+      </button>`)}`;
   },
 
   async _confirmPurchase() {
+    const isTransfer = this._state.paymentMethod === 'transfer';
+    const iou = this._state.iouRequested && isTransfer;
+    if (iou) {
+      const name = $('#iou-name')?.value?.trim() || this._state.iouName;
+      const addr = $('#iou-addr')?.value?.trim() || this._state.iouAddress;
+      if (!name) { UI.toast('借用書の宛名を入力してください', 'error'); return; }
+      if (!addr) { UI.toast('借用書の住所を入力してください', 'error'); return; }
+      this._state.iouName = name; this._state.iouAddress = addr;
+    }
     const res = await API.createOrder({
-      productId: this._state.selectedProduct,
-      qty: this._state.purchaseQty,
-      balanceUsed: this._state.balanceUsed,
+      productId: this._state.selectedProduct, qty: this._state.purchaseQty, balanceUsed: this._state.balanceUsed,
+      payment_method: this._state.paymentMethod,
+      iou_requested: iou ? 'yes' : 'no', iou_name: iou ? this._state.iouName : '', iou_address: iou ? this._state.iouAddress : '',
     });
     if (res?.success) {
-      this._state.purchaseStep = 3;
-      this._state._lastOrder = res.order;
-      if (this._state.balanceUsed > 0) {
-        Auth.currentUser.reinvest_balance = Math.max(0, (Auth.currentUser.reinvest_balance || 0) - this._state.balanceUsed);
-        localStorage.setItem('auth_user', JSON.stringify(Auth.currentUser));
-      }
+      this._state.purchaseStep = 3; this._state._lastOrder = res.order;
+      if (this._state.balanceUsed > 0) { Auth.currentUser.reinvest_balance = Math.max(0, (Auth.currentUser.reinvest_balance || 0) - this._state.balanceUsed); localStorage.setItem('auth_user', JSON.stringify(Auth.currentUser)); }
       App.renderPage();
-    } else {
-      UI.toast(res?.error || '注文に失敗しました', 'error');
-    }
+    } else { UI.toast(res?.error || '注文に失敗しました', 'error'); }
   },
 
-  // 購入Step3: 完了
+  // Step3: 完了
   async _purchaseDone(p, total) {
     const order = this._state._lastOrder;
     if (!order) return UI.empty('注文情報が見つかりません');
     const transfer = order.transfer_amount || 0;
     const balUsed = order.balance_used || 0;
-
-    // 管理者の振込先を取得
-    const settings = await API.getSettings();
-    const bank = (typeof settings === 'object' && !settings.error) ? settings : {};
-
-    let html = `${UI.steps(3, 3)}`;
-    html += UI.card(`
-      <div class="text-center">
-        <div class="text-3xl mb-05">${transfer > 0 ? '📋' : '✅'}</div>
-        <h2 class="text-lg font-bold">${transfer > 0 ? '予約が完了しました' : '購入が完了しました'}</h2>
-      </div>
-      ${balUsed > 0 ? `
-        <div class="balance-deduct mt-1">
-          <span>残高から充当</span><span class="font-bold">−${Fmt.yen(balUsed)}</span>
-        </div>
-      ` : ''}
-    `);
-
-    if (transfer > 0) {
+    const isTransfer = (order.payment_method || 'transfer') === 'transfer';
+    let bank = {};
+    if (isTransfer) { const s = await API.getSettings(); bank = (typeof s === 'object' && !s.error) ? s : {}; }
+    let html = `${UI.steps(4, 4)}`;
+    html += UI.card(`<div class="text-center"><div class="text-3xl mb-05">${transfer > 0 ? '📋' : '✅'}</div><h2 class="text-lg font-bold">${transfer > 0 ? '予約が完了しました' : '購入が完了しました'}</h2></div>${balUsed > 0 ? `<div class="balance-deduct mt-1"><span>残高から充当</span><span class="font-bold">−${Fmt.yen(balUsed)}</span></div>` : ''}`);
+    if (transfer > 0 && isTransfer) {
       const hasBankInfo = bank.bank_name && bank.bank_number;
-      html += UI.card(`
-        <h3 class="section-title">🏦 振込先（管理者口座）</h3>
-        ${hasBankInfo ? `
-        <div class="bank-info">
-          ${UI.confirmRow('振込額', Fmt.yen(transfer), 'font-bold text-lg')}
-          ${UI.confirmRow('銀行', bank.bank_name)}
-          ${bank.bank_branch ? UI.confirmRow('支店', bank.bank_branch) : ''}
-          ${UI.confirmRow('種類', bank.bank_type || '普通')}
-          ${UI.confirmRow('口座番号', bank.bank_number)}
-          ${bank.bank_holder ? UI.confirmRow('名義', bank.bank_holder) : ''}
-        </div>` : `
-        <div class="warning-box">振込先口座情報が未設定です。管理者にお問い合わせください。</div>
-        `}
-        <div class="info-box mt-1">
-          <div class="text-xs">振込後、マイページから明細をアップロードしてください</div>
-        </div>
-      `);
+      html += UI.card(`<h3 class="section-title">🏦 振込先（管理者口座）</h3>${hasBankInfo ? `<div class="bank-info">${UI.confirmRow('振込額', Fmt.yen(transfer), 'font-bold text-lg')}${UI.confirmRow('銀行', bank.bank_name)}${bank.bank_branch ? UI.confirmRow('支店', bank.bank_branch) : ''}${UI.confirmRow('種類', bank.bank_type || '普通')}${UI.confirmRow('口座番号', bank.bank_number)}${bank.bank_holder ? UI.confirmRow('名義', bank.bank_holder) : ''}</div>` : '<div class="warning-box">振込先口座情報が未設定です。管理者にお問い合わせください。</div>'}<div class="info-box mt-1"><div class="text-xs">振込後、マイページから明細をアップロードしてください</div></div>`);
+    } else if (transfer > 0) {
+      html += UI.card(`<h3 class="section-title">💵 現金手渡し</h3><div class="info-box"><div class="text-sm font-bold">${Fmt.yen(transfer)}を管理者にお渡しください</div><div class="text-xs mt-05">管理者と直接やり取りの上、お支払いをお願いします。</div></div>`);
     }
-
+    if (order.iou_requested === 'yes') html += UI.card('<div class="success-box">📄 借用書を希望されています。決済確定後にダウンロード可能になります。</div>');
     html += `<button class="btn btn--primary btn--full mt-1" onclick="App.navigate('top')">TOPに戻る</button>`;
     return html;
   },
 
   // ════════════════════════════════
-  //  お戻しフロー（5ステップ）
+  //  お戻しフロー
   // ════════════════════════════════
-  goReturn(orderId) {
-    this._reset();
-    this._state.returnOrder = orderId;
-    this._state.returnStep = 1;
-    App.currentPage = 'return';
-    App.renderPage();
-  },
+  goReturn(orderId) { this._reset(); this._state.returnOrder = orderId; this._state.returnStep = 1; App.currentPage = 'return'; App.renderPage(); },
 
   async renderReturn() {
     const step = this._state.returnStep;
@@ -1738,284 +1699,460 @@ const UserPages = {
     return UI.empty('不明なステップ');
   },
 
-  // お戻しStep1: 全額 or 一部
   async _retStep1() {
     const orders = await API.getOrders();
     const order = (Array.isArray(orders) ? orders : []).find(o => o.order_id === this._state.returnOrder && o.status === 'confirmed');
     if (!order) return UI.card('お戻し対象の注文が見つかりません') + `<button class="btn btn--ghost btn--full mt-1" onclick="App.navigate('mypage')">マイページへ</button>`;
-
     const product = await API.getProduct(order.product_id);
     const profitRate = product ? (order.unit_price - product.buy_price) / product.buy_price : 0.35;
     const profit = Math.round(order.total * profitRate);
     const totalAmount = order.total + profit;
-    this._state._totalAmount = totalAmount;
-    this._state._profit = profit;
-    this._state._orderTotal = order.total;
-    this._state._productName = product?.name || order.product_name || '';
-
+    this._state._totalAmount = totalAmount; this._state._profit = profit; this._state._orderTotal = order.total; this._state._productName = product?.name || order.product_name || '';
     return `
       <button class="btn btn--ghost btn--sm mb-1" onclick="App.navigate('mypage')">← 戻る</button>
       ${UI.steps(1, 4)}
       ${UI.card(`
         <h3 class="section-title">お戻し方法を選択</h3>
         <div class="text-sm text-gray mb-1">${this._state._productName} (${Fmt.qty(order.qty)})</div>
-        ${UI.confirmRow('元本', Fmt.yen(order.total))}
-        ${UI.confirmRow('利益', '+' + Fmt.yen(profit))}
-        ${UI.divider()}
-        ${UI.confirmRow('お戻し総額', Fmt.yen(totalAmount), 'font-bold')}
+        ${UI.confirmRow('元本', Fmt.yen(order.total))}${UI.confirmRow('利益', '+' + Fmt.yen(profit))}${UI.divider()}${UI.confirmRow('お戻し総額', Fmt.yen(totalAmount), 'font-bold')}
         <div class="choice-group mt-1">
-          <button class="choice-btn" onclick="UserPages._state.returnAction='full';UserPages._state.returnAmount=${totalAmount};UserPages._state.returnStep=3;App.renderPage()">
-            <div class="choice-btn__title">💰 全額を受け取る</div>
-            <div class="choice-btn__desc">${Fmt.yen(totalAmount)} を全額受取</div>
-          </button>
-          <button class="choice-btn" onclick="UserPages._state.returnAction='partial';UserPages._state.returnStep=2;App.renderPage()">
-            <div class="choice-btn__title">📊 一部を受け取る</div>
-            <div class="choice-btn__desc">受取額を指定し、残りは運用継続</div>
-          </button>
+          <button class="choice-btn" onclick="UserPages._state.returnAction='full';UserPages._state.returnAmount=${totalAmount};UserPages._state.returnStep=3;App.renderPage()"><div class="choice-btn__title">💰 全額を受け取る</div><div class="choice-btn__desc">${Fmt.yen(totalAmount)} を全額受取</div></button>
+          <button class="choice-btn" onclick="UserPages._state.returnAction='partial';UserPages._state.returnStep=2;App.renderPage()"><div class="choice-btn__title">📊 一部を受け取る</div><div class="choice-btn__desc">受取額を指定し、残りは運用継続</div></button>
         </div>
       `)}`;
   },
 
-  // お戻しStep2: 一部受取額入力
   _retStep2() {
-    const total = this._state._totalAmount;
-    const amt = this._state.returnAmount || Math.round(total / 2);
-    const keep = total - amt;
-    const pct = Math.round(amt / total * 100);
-
+    const total = this._state._totalAmount; const amt = this._state.returnAmount || Math.round(total / 2); const keep = total - amt; const pct = Math.round(amt / total * 100);
     return `
       <button class="btn btn--ghost btn--sm mb-1" onclick="UserPages._state.returnStep=1;App.renderPage()">← 戻る</button>
       ${UI.steps(2, 4)}
       ${UI.card(`
-        <h3 class="section-title">受取額を入力</h3>
-        <div class="text-sm text-gray mb-1">お戻し総額: ${Fmt.yen(total)}</div>
-        <div class="form-group">
-          <label class="form-label">受け取る金額</label>
-          <div class="amount-input-wrap">
-            <span class="amount-prefix">¥</span>
-            <input type="number" class="input input--amount" value="${amt}" min="1" max="${total}" step="10000" onchange="UserPages._state.returnAmount=Math.max(1,Math.min(Number(this.value),${total}));App.renderPage({soft:true})">
-          </div>
-          <input type="range" class="range-slider" min="1" max="${total}" step="10000" value="${amt}" oninput="UserPages._state.returnAmount=Number(this.value);App.renderPage({soft:true})">
-          <div class="range-labels"><span>¥1</span><span>${Fmt.yen(total)}</span></div>
-        </div>
-        <div class="reinvest-bar">
-          <div class="reinvest-bar__return" style="width:${pct}%"></div>
-          <div class="reinvest-bar__keep" style="width:${100 - pct}%"></div>
-        </div>
-        <div class="payment-split">
-          <div class="payment-split__item payment-split__item--green"><div class="text-xs">受取額</div><div class="font-bold">${Fmt.yen(amt)}</div></div>
-          <div class="payment-split__item payment-split__item--teal"><div class="text-xs">運用継続</div><div class="font-bold">${Fmt.yen(keep)}</div></div>
-        </div>
+        <h3 class="section-title">受取額を入力</h3><div class="text-sm text-gray mb-1">お戻し総額: ${Fmt.yen(total)}</div>
+        <div class="form-group"><label class="form-label">受け取る金額</label><div class="amount-input-wrap"><span class="amount-prefix">¥</span><input type="number" class="input input--amount" value="${amt}" min="1" max="${total}" step="10000" onchange="UserPages._state.returnAmount=Math.max(1,Math.min(Number(this.value),${total}));App.renderPage({soft:true})"></div>
+        <input type="range" class="range-slider" min="1" max="${total}" step="10000" value="${amt}" oninput="UserPages._state.returnAmount=Number(this.value);App.renderPage({soft:true})"><div class="range-labels"><span>¥1</span><span>${Fmt.yen(total)}</span></div></div>
+        <div class="reinvest-bar"><div class="reinvest-bar__return" style="width:${pct}%"></div><div class="reinvest-bar__keep" style="width:${100 - pct}%"></div></div>
+        <div class="payment-split"><div class="payment-split__item payment-split__item--green"><div class="text-xs">受取額</div><div class="font-bold">${Fmt.yen(amt)}</div></div><div class="payment-split__item payment-split__item--teal"><div class="text-xs">運用継続</div><div class="font-bold">${Fmt.yen(keep)}</div></div></div>
         <button class="btn btn--primary btn--full mt-1" onclick="UserPages._state.returnAmount=${amt};UserPages._state.returnStep=3;App.renderPage()">受取方法の選択へ →</button>
       `)}`;
   },
 
-  // お戻しStep3: 受取方法を選択
   _retStep3() {
-    const amt = this._state.returnAmount;
-    const user = Auth.currentUser;
-    const hasBank = user.bank_name && user.bank_number;
+    const amt = this._state.returnAmount; const user = Auth.currentUser; const hasBank = user.bank_name && user.bank_number;
     const prevStep = this._state.returnAction === 'partial' ? 2 : 1;
-
     return `
       <button class="btn btn--ghost btn--sm mb-1" onclick="UserPages._state.returnStep=${prevStep};App.renderPage()">← 戻る</button>
       ${UI.steps(3, 4)}
       ${UI.card(`
-        <h3 class="section-title">受取方法を選択</h3>
-        <div class="text-sm text-gray mb-1">受取額: ${Fmt.yen(amt)}</div>
+        <h3 class="section-title">受取方法を選択</h3><div class="text-sm text-gray mb-1">受取額: ${Fmt.yen(amt)}</div>
         <div class="choice-group">
-          <button class="choice-btn" onclick="UserPages._chooseTransfer()">
-            <div class="choice-btn__title">🏦 銀行振込</div>
-            <div class="choice-btn__desc">${hasBank ? user.bank_name + ' (' + user.bank_number + ')' : '口座情報を入力して振込で受取'}</div>
-          </button>
-          <button class="choice-btn" onclick="UserPages._state.returnMethod='cash';UserPages._state.returnStep=4;App.renderPage()">
-            <div class="choice-btn__title">💵 現金手渡し</div>
-            <div class="choice-btn__desc">日程を選んで対面で受取</div>
-          </button>
+          <button class="choice-btn" onclick="UserPages._chooseTransfer()"><div class="choice-btn__title">🏦 銀行振込</div><div class="choice-btn__desc">${hasBank ? user.bank_name + ' (' + user.bank_number + ')' : '口座情報を入力して振込で受取'}</div></button>
+          <button class="choice-btn" onclick="UserPages._state.returnMethod='cash';UserPages._state.returnStep=4;App.renderPage()"><div class="choice-btn__title">💵 現金手渡し</div><div class="choice-btn__desc">日程を選んで対面で受取</div></button>
         </div>
       `)}`;
   },
 
   _chooseTransfer() {
-    this._state.returnMethod = 'transfer';
-    const user = Auth.currentUser;
-    if (user.bank_name && user.bank_number) {
-      this._state.returnStep = 4;
-    } else {
-      this._state.returnStep = 3.5;
-    }
-    App.renderPage();
+    this._state.returnMethod = 'transfer'; const user = Auth.currentUser;
+    this._state.returnStep = (user.bank_name && user.bank_number) ? 4 : 3.5; App.renderPage();
   },
 
-  // お戻しStep3.5: 口座情報入力（未登録の場合）
   _retStepBank() {
     const user = Auth.currentUser;
     return `
       <button class="btn btn--ghost btn--sm mb-1" onclick="UserPages._state.returnStep=3;App.renderPage()">← 戻る</button>
       ${UI.steps(3, 4)}
       ${UI.card(`
-        <h3 class="section-title">🏦 振込先口座を入力</h3>
-        <div class="text-sm text-gray mb-1">お戻し金を受け取る口座を登録してください</div>
-        <div class="form-group">
-          <label class="form-label">銀行名 <span class="text-red">*</span></label>
-          <input type="text" class="input" id="rb-bank" value="${user.bank_name || ''}" placeholder="○○銀行">
-        </div>
-        <div class="form-group">
-          <label class="form-label">支店名</label>
-          <input type="text" class="input" id="rb-branch" value="${user.bank_branch || ''}" placeholder="△△支店">
-        </div>
-        <div class="form-group">
-          <label class="form-label">口座種類</label>
-          <select class="input" id="rb-type">
-            <option value="普通" ${(user.bank_type || '普通') === '普通' ? 'selected' : ''}>普通</option>
-            <option value="当座" ${user.bank_type === '当座' ? 'selected' : ''}>当座</option>
-          </select>
-        </div>
-        <div class="form-group">
-          <label class="form-label">口座番号 <span class="text-red">*</span></label>
-          <input type="text" class="input" id="rb-number" value="${user.bank_number || ''}" placeholder="1234567" inputmode="numeric">
-        </div>
-        <div class="form-group">
-          <label class="form-label">口座名義（カナ）<span class="text-red">*</span></label>
-          <input type="text" class="input" id="rb-holder" value="${user.bank_holder || ''}" placeholder="ヤマダ タロウ">
-        </div>
+        <h3 class="section-title">🏦 振込先口座を入力</h3><div class="text-sm text-gray mb-1">お戻し金を受け取る口座を登録してください</div>
+        <div class="form-group"><label class="form-label">銀行名 <span class="text-red">*</span></label><input type="text" class="input" id="rb-bank" value="${user.bank_name || ''}" placeholder="○○銀行"></div>
+        <div class="form-group"><label class="form-label">支店名</label><input type="text" class="input" id="rb-branch" value="${user.bank_branch || ''}" placeholder="△△支店"></div>
+        <div class="form-group"><label class="form-label">口座種類</label><select class="input" id="rb-type"><option value="普通" ${(user.bank_type || '普通') === '普通' ? 'selected' : ''}>普通</option><option value="当座" ${user.bank_type === '当座' ? 'selected' : ''}>当座</option></select></div>
+        <div class="form-group"><label class="form-label">口座番号 <span class="text-red">*</span></label><input type="text" class="input" id="rb-number" value="${user.bank_number || ''}" placeholder="1234567" inputmode="numeric"></div>
+        <div class="form-group"><label class="form-label">口座名義（カナ）<span class="text-red">*</span></label><input type="text" class="input" id="rb-holder" value="${user.bank_holder || ''}" placeholder="ヤマダ タロウ"></div>
         <button class="btn btn--primary btn--full" onclick="UserPages._saveBankAndContinue()">保存して次へ →</button>
       `)}`;
   },
 
   async _saveBankAndContinue() {
-    const data = {
-      bank_name: $('#rb-bank')?.value?.trim(),
-      bank_branch: $('#rb-branch')?.value?.trim(),
-      bank_type: $('#rb-type')?.value,
-      bank_number: $('#rb-number')?.value?.trim(),
-      bank_holder: $('#rb-holder')?.value?.trim(),
-    };
+    const data = { bank_name: $('#rb-bank')?.value?.trim(), bank_branch: $('#rb-branch')?.value?.trim(), bank_type: $('#rb-type')?.value, bank_number: $('#rb-number')?.value?.trim(), bank_holder: $('#rb-holder')?.value?.trim() };
     if (!data.bank_name) { UI.toast('銀行名を入力してください', 'error'); return; }
     if (!data.bank_number) { UI.toast('口座番号を入力してください', 'error'); return; }
     if (!data.bank_holder) { UI.toast('口座名義を入力してください', 'error'); return; }
-
     const res = await API.updateProfile(data);
-    if (res?.success && res.user) {
-      Auth.currentUser = { ...Auth.currentUser, ...res.user };
-      localStorage.setItem('auth_user', JSON.stringify(Auth.currentUser));
-      UI.toast('口座情報を保存しました');
-      this._state.returnStep = 4;
-      App.renderPage();
-    } else {
-      UI.toast(res?.error || '保存に失敗しました', 'error');
-    }
+    if (res?.success && res.user) { Auth.currentUser = { ...Auth.currentUser, ...res.user }; localStorage.setItem('auth_user', JSON.stringify(Auth.currentUser)); UI.toast('口座情報を保存しました'); this._state.returnStep = 4; App.renderPage(); }
+    else UI.toast(res?.error || '保存に失敗しました', 'error');
   },
 
-  // お戻しStep4: 最終確認（+日程選択）
   _retStep4() {
-    const isCash = this._state.returnMethod === 'cash';
-    const isPartial = this._state.returnAction === 'partial';
-    const amt = this._state.returnAmount;
-    const keep = (this._state._totalAmount || 0) - amt;
-    const user = Auth.currentUser;
-
-    // 日程データ
-    const dates = [];
-    const base = new Date('2026-03-04');
-    const ranks = [2, 3, 1, 0, 0, 3, 2];
-    const dayNames = ['日','月','火','水','木','金','土'];
-    for (let i = 0; i < 7; i++) {
-      const d = new Date(base); d.setDate(d.getDate() + i);
-      dates.push({ date: d, rank: ranks[i], label: `${d.getMonth()+1}/${d.getDate()}`, day: dayNames[d.getDay()] });
-    }
-    if (!this._state.returnDate && isCash) {
-      const best = dates.find(d => d.rank === 3);
-      if (best) this._state.returnDate = best.label;
-    }
-
-    let html = `
-      <button class="btn btn--ghost btn--sm mb-1" onclick="UserPages._state.returnStep=3;App.renderPage()">← 戻る</button>
-      ${UI.steps(4, 4)}`;
-
+    const isCash = this._state.returnMethod === 'cash'; const isPartial = this._state.returnAction === 'partial';
+    const amt = this._state.returnAmount; const keep = (this._state._totalAmount || 0) - amt; const user = Auth.currentUser;
+    const dates = []; const base = new Date('2026-03-04'); const ranks = [2, 3, 1, 0, 0, 3, 2]; const dayNames = ['日','月','火','水','木','金','土'];
+    for (let i = 0; i < 7; i++) { const d = new Date(base); d.setDate(d.getDate() + i); dates.push({ date: d, rank: ranks[i], label: `${d.getMonth()+1}/${d.getDate()}`, day: dayNames[d.getDay()] }); }
+    if (!this._state.returnDate && isCash) { const best = dates.find(d => d.rank === 3); if (best) this._state.returnDate = best.label; }
+    let html = `<button class="btn btn--ghost btn--sm mb-1" onclick="UserPages._state.returnStep=3;App.renderPage()">← 戻る</button>${UI.steps(4, 4)}`;
     html += UI.card(`
       <h3 class="section-title">${isCash ? '日程を選んで確認' : '最終確認'}</h3>
-      ${isCash ? `
-        <div class="schedule-hint">💡 ⭐の日に合わせるとスムーズにお渡しできます</div>
-        <div class="sch-grid">
-          ${dates.map(d => {
-            if (d.rank === 0) return `<div class="sch-cell sch-cell--off"><div class="sch-cell__date">${d.label}</div><div class="sch-cell__sub">${d.day}</div></div>`;
-            const sel = this._state.returnDate === d.label;
-            const cls = d.rank === 3 ? 'sch-cell--best' : d.rank === 2 ? 'sch-cell--ok' : 'sch-cell--few';
-            return `<button class="sch-cell ${cls} ${sel ? 'sch-cell--sel' : ''}" onclick="UserPages._state.returnDate='${d.label}';App.renderPage({soft:true})">
-              ${d.rank === 3 ? '<div class="sch-cell__star">⭐</div>' : ''}
-              <div class="sch-cell__date">${d.label}</div>
-              <div class="sch-cell__sub">${d.day}</div>
-            </button>`;
-          }).join('')}
-        </div>
-        ${UI.divider()}
-      ` : ''}
+      ${isCash ? `<div class="schedule-hint">💡 ⭐の日に合わせるとスムーズにお渡しできます</div><div class="sch-grid">${dates.map(d => {
+        if (d.rank === 0) return `<div class="sch-cell sch-cell--off"><div class="sch-cell__date">${d.label}</div><div class="sch-cell__sub">${d.day}</div></div>`;
+        const sel = this._state.returnDate === d.label; const cls = d.rank === 3 ? 'sch-cell--best' : d.rank === 2 ? 'sch-cell--ok' : 'sch-cell--few';
+        return `<button class="sch-cell ${cls} ${sel ? 'sch-cell--sel' : ''}" onclick="UserPages._state.returnDate='${d.label}';App.renderPage({soft:true})">${d.rank === 3 ? '<div class="sch-cell__star">⭐</div>' : ''}<div class="sch-cell__date">${d.label}</div><div class="sch-cell__sub">${d.day}</div></button>`;
+      }).join('')}</div>${UI.divider()}` : ''}
       <div class="mt-05">
-        ${UI.confirmRow('商品', this._state._productName)}
-        ${UI.confirmRow('お戻し方法', isPartial ? '一部受取' : '全額受取')}
-        ${UI.confirmRow('受取額', Fmt.yen(amt), 'font-bold')}
-        ${isPartial ? UI.confirmRow('運用継続', Fmt.yen(keep)) : ''}
-        ${UI.confirmRow('受取方法', isCash ? '現金手渡し' : '銀行振込')}
-        ${isCash ? UI.confirmRow('希望日', this._state.returnDate || '未選択') : ''}
+        ${UI.confirmRow('商品', this._state._productName)}${UI.confirmRow('お戻し方法', isPartial ? '一部受取' : '全額受取')}${UI.confirmRow('受取額', Fmt.yen(amt), 'font-bold')}${isPartial ? UI.confirmRow('運用継続', Fmt.yen(keep)) : ''}${UI.confirmRow('受取方法', isCash ? '現金手渡し' : '銀行振込')}${isCash ? UI.confirmRow('希望日', this._state.returnDate || '未選択') : ''}
       </div>
-      ${!isCash && user.bank_name ? `
-        ${UI.divider()}
-        <div class="text-xs font-bold text-gray mb-05">振込先口座</div>
-        <div class="bank-info">
-          ${UI.confirmRow('銀行', user.bank_name)}
-          ${user.bank_branch ? UI.confirmRow('支店', user.bank_branch) : ''}
-          ${UI.confirmRow('口座', (user.bank_type || '普通') + ' ' + user.bank_number)}
-          ${UI.confirmRow('名義', user.bank_holder)}
-        </div>
-        <button class="btn btn--ghost btn--sm mt-05" onclick="UserPages._state.returnStep=3.5;App.renderPage()">口座情報を変更</button>
-      ` : ''}
+      ${!isCash && user.bank_name ? `${UI.divider()}<div class="text-xs font-bold text-gray mb-05">振込先口座</div><div class="bank-info">${UI.confirmRow('銀行', user.bank_name)}${user.bank_branch ? UI.confirmRow('支店', user.bank_branch) : ''}${UI.confirmRow('口座', (user.bank_type || '普通') + ' ' + user.bank_number)}${UI.confirmRow('名義', user.bank_holder)}</div><button class="btn btn--ghost btn--sm mt-05" onclick="UserPages._state.returnStep=3.5;App.renderPage()">口座情報を変更</button>` : ''}
       <button class="btn btn--primary btn--full mt-1" onclick="UserPages._submitReturn()">お戻し申請を確定する</button>
     `);
-
     return html;
   },
 
   async _submitReturn() {
-    const data = {
-      orderId: this._state.returnOrder,
-      return_action: this._state.returnAction,
-      returnAmount: this._state.returnAmount,
-      method: this._state.returnMethod,
-      desiredDate: this._state.returnDate || '',
-    };
-    const res = await API.createReturn(data);
+    const res = await API.createReturn({ orderId: this._state.returnOrder, return_action: this._state.returnAction, returnAmount: this._state.returnAmount, method: this._state.returnMethod, desiredDate: this._state.returnDate || '' });
     if (res?.success) {
-      if (res.returnData?.keep_amount > 0) {
-        Auth.currentUser.reinvest_balance = (Auth.currentUser.reinvest_balance || 0) + res.returnData.keep_amount;
-        localStorage.setItem('auth_user', JSON.stringify(Auth.currentUser));
-      }
-      this._state.returnStep = 5;
-      this._state._returnResult = res.returnData;
+      if (res.returnData?.keep_amount > 0) { Auth.currentUser.reinvest_balance = (Auth.currentUser.reinvest_balance || 0) + res.returnData.keep_amount; localStorage.setItem('auth_user', JSON.stringify(Auth.currentUser)); }
+      this._state.returnStep = 5; this._state._returnResult = res.returnData; App.renderPage();
+    } else UI.toast(res?.error || '申請に失敗しました', 'error');
+  },
+
+  _retStep5() {
+    const ret = this._state._returnResult;
+    return `${UI.card(`<div class="text-center"><div class="text-3xl mb-05">✅</div><h2 class="text-lg font-bold">お戻し申請が完了しました</h2></div><div class="mt-1">${UI.confirmRow('受取額', Fmt.yen(ret?.return_amount))}${ret?.keep_amount > 0 ? UI.confirmRow('運用継続', Fmt.yen(ret.keep_amount)) : ''}${UI.confirmRow('受取方法', ret?.method === 'cash' ? '現金手渡し' : '銀行振込')}${ret?.desired_date ? UI.confirmRow('希望日', ret.desired_date) : ''}</div><div class="info-box mt-1"><div class="text-xs">処理状況は「商品状況」タブで確認できます</div></div>`)}<button class="btn btn--primary btn--full mt-1" onclick="App.navigate('mypage')">マイページへ</button>`;
+  },
+
+  // ════════════════════════════════
+  //  商品状況
+  // ════════════════════════════════
+  async renderStatus() {
+    const products = await API.getProducts(); const orders = await API.getOrders(); const returns = await API.getReturns();
+    const list = Array.isArray(products) ? products : []; const myOrders = Array.isArray(orders) ? orders : []; const myReturns = Array.isArray(returns) ? returns : [];
+    let html = `<h2 class="page-title">商品状況</h2>`;
+    if (list.length === 0) return html + UI.empty('商品がありません', '📊');
+    const active = list.filter(p => p.status === 'active'); const closed = list.filter(p => p.status === 'closed');
+    const renderProduct = (p) => {
+      const pOrders = myOrders.filter(o => o.product_id === p.product_id); const pReturns = myReturns.filter(r => pOrders.some(o => o.order_id === r.order_id));
+      const soldPct = p.total_qty > 0 ? Math.round((1 - p.remaining_qty / p.total_qty) * 100) : 0;
+      html += `<div class="status-card"><div class="status-card__header"><span class="font-bold">${p.name}</span>${UI.badge(Fmt.productStatus(p.status), Fmt.statusColor(p.status))}</div>
+      <div class="status-section"><div class="status-section__title">📦 在庫</div><div class="status-bar-wrap"><div class="status-bar"><div class="status-bar__fill" style="width:${soldPct}%"></div></div><div class="status-bar__label">${p.remaining_qty} / ${p.total_qty}</div></div></div>
+      ${pOrders.length > 0 ? `<div class="status-section"><div class="status-section__title">🛒 あなたの注文</div>${pOrders.map(o => `<div class="status-my-order"><div class="flex-between"><span>${Fmt.qty(o.qty)} / ${Fmt.yen(o.total)}</span>${UI.badge(Fmt.orderStatus(o.status), Fmt.statusColor(o.status))}</div></div>`).join('')}</div>` : ''}
+      ${pReturns.length > 0 ? `<div class="status-section"><div class="status-section__title">↩️ お戻し</div>${pReturns.map(r => `<div class="status-my-order"><div class="flex-between"><span>受取: ${Fmt.yen(r.return_amount)}</span>${UI.badge(Fmt.returnStatus(r.status), Fmt.statusColor(r.status))}</div></div>`).join('')}</div>` : ''}
+      </div>`;
+    };
+    if (active.length > 0) { html += '<h3 class="section-title">販売中</h3>'; active.forEach(renderProduct); }
+    if (closed.length > 0) { html += '<h3 class="section-title mt-2">締切済み</h3>'; closed.forEach(renderProduct); }
+    return html;
+  },
+
+  // ════════════════════════════════
+  //  マイページ
+  // ════════════════════════════════
+  async renderMyPage() {
+    const user = Auth.currentUser; const orders = await API.getOrders(); const returns = await API.getReturns();
+    const myOrders = Array.isArray(orders) ? orders : []; const myReturns = Array.isArray(returns) ? returns : [];
+    const balance = user?.reinvest_balance || 0; const hasBank = user.bank_name && user.bank_number;
+    let html = `<h2 class="page-title">マイページ</h2>`;
+    html += UI.card(`${UI.confirmRow('名前', user.name)}${UI.confirmRow('グループ', user.group_name || '-')}${user.email ? UI.confirmRow('メール', user.email) : ''}`);
+    if (balance > 0) html += `<div class="balance-banner"><div class="balance-banner__amount">${Fmt.yen(balance)}</div><div class="balance-banner__label">運用継続中の残高</div></div>`;
+
+    // 口座情報
+    html += '<h3 class="section-title mt-2">🏦 受取口座</h3>';
+    if (this._state._editingBank) {
+      html += UI.card(`
+        <div class="form-group"><label class="form-label">銀行名 <span class="text-red">*</span></label><input type="text" class="input" id="mb-bank" value="${user.bank_name || ''}" placeholder="○○銀行"></div>
+        <div class="form-group"><label class="form-label">支店名</label><input type="text" class="input" id="mb-branch" value="${user.bank_branch || ''}" placeholder="△△支店"></div>
+        <div class="form-group"><label class="form-label">口座種類</label><select class="input" id="mb-type"><option value="普通" ${(user.bank_type || '普通') === '普通' ? 'selected' : ''}>普通</option><option value="当座" ${user.bank_type === '当座' ? 'selected' : ''}>当座</option></select></div>
+        <div class="form-group"><label class="form-label">口座番号 <span class="text-red">*</span></label><input type="text" class="input" id="mb-number" value="${user.bank_number || ''}" placeholder="1234567" inputmode="numeric"></div>
+        <div class="form-group"><label class="form-label">口座名義（カナ）<span class="text-red">*</span></label><input type="text" class="input" id="mb-holder" value="${user.bank_holder || ''}" placeholder="ヤマダ タロウ"></div>
+        <div class="btn-group"><button class="btn btn--ghost" onclick="UserPages._state._editingBank=false;App.renderPage({soft:true})">キャンセル</button><button class="btn btn--primary" onclick="UserPages._saveBankInfo()">保存</button></div>
+      `);
+    } else if (hasBank) {
+      html += UI.card(`<div class="bank-info">${UI.confirmRow('銀行', user.bank_name)}${user.bank_branch ? UI.confirmRow('支店', user.bank_branch) : ''}${UI.confirmRow('口座', (user.bank_type || '普通') + ' ' + user.bank_number)}${UI.confirmRow('名義', user.bank_holder)}</div><button class="btn btn--outline btn--sm mt-1" onclick="UserPages._state._editingBank=true;App.renderPage({soft:true})">口座情報を変更</button>`);
+    } else {
+      html += `<div class="profile-bank-empty"><div class="profile-bank-empty__text">⚠️ 口座情報が未登録です</div><div class="text-xs text-gray mb-1">お戻しで銀行振込を選ぶ際に必要です</div><button class="btn btn--primary btn--sm" onclick="UserPages._state._editingBank=true;App.renderPage({soft:true})">口座情報を登録する</button></div>`;
+    }
+
+    // 注文履歴
+    html += '<h3 class="section-title mt-2">注文履歴</h3>';
+    if (myOrders.length === 0) html += UI.card('<div class="text-sm text-gray text-center">注文はありません</div>');
+    else myOrders.forEach(o => {
+      const canReturn = o.status === 'confirmed' && !myReturns.find(r => r.order_id === o.order_id);
+      const needUpload = ['pending_payment', 'pending_receipt'].includes(o.status);
+      const canDownloadIOU = o.status === 'confirmed' && o.iou_requested === 'yes';
+      const methodLabel = o.payment_method === 'cash' ? '現金手渡し' : '銀行振込';
+      html += `<div class="order-card"><div class="order-card__header"><span class="order-card__name">${o.product_name}</span>${UI.badge(Fmt.orderStatus(o.status), Fmt.statusColor(o.status))}</div>
+      <div class="order-card__body">${UI.confirmRow('数量', Fmt.qty(o.qty))}${UI.confirmRow('合計', Fmt.yen(o.total))}${o.balance_used > 0 ? UI.confirmRow('残高充当', Fmt.yen(o.balance_used)) : ''}${o.transfer_amount > 0 ? UI.confirmRow(o.payment_method === 'cash' ? '手渡し額' : '振込額', Fmt.yen(o.transfer_amount)) : ''}${UI.confirmRow('支払方法', methodLabel)}${UI.confirmRow('注文日', Fmt.date(o.created_at))}</div>
+      <div class="order-card__actions">
+        ${canReturn ? `<button class="btn btn--outline btn--sm" onclick="UserPages.goReturn('${o.order_id}')">お戻し申請</button>` : ''}
+        ${needUpload && !o.receipt_url && o.payment_method !== 'cash' ? `<button class="btn btn--primary btn--sm" onclick="UserPages._uploadReceipt('${o.order_id}')">明細アップロード</button>` : ''}
+        ${o.receipt_url ? `<a href="${o.receipt_url}" target="_blank" rel="noopener" class="btn btn--outline btn--sm">📎 明細を見る</a>` : ''}
+        ${canDownloadIOU ? `<button class="btn btn--primary btn--sm" onclick="UserPages._downloadIOU('${o.order_id}')">📄 借用書DL</button>` : ''}
+      </div></div>`;
+    });
+
+    // お戻し履歴
+    if (myReturns.length > 0) {
+      html += '<h3 class="section-title mt-2">お戻し履歴</h3>';
+      myReturns.forEach(r => { html += UI.card(`<div class="flex-between"><span class="font-bold">${r.product_name || '商品'}</span>${UI.badge(Fmt.returnStatus(r.status), Fmt.statusColor(r.status))}</div>${UI.confirmRow('受取額', Fmt.yen(r.return_amount))}${r.keep_amount > 0 ? UI.confirmRow('運用継続', Fmt.yen(r.keep_amount)) : ''}${UI.confirmRow('受取方法', r.method === 'cash' ? '現金手渡し' : '銀行振込')}${UI.confirmRow('申請日', Fmt.date(r.created_at))}`); });
+    }
+    html += '<button class="btn btn--ghost btn--full mt-2" onclick="App.doLogout()">ログアウト</button>';
+    return html;
+  },
+
+  async _saveBankInfo() {
+    const data = { bank_name: $('#mb-bank')?.value?.trim(), bank_branch: $('#mb-branch')?.value?.trim(), bank_type: $('#mb-type')?.value, bank_number: $('#mb-number')?.value?.trim(), bank_holder: $('#mb-holder')?.value?.trim() };
+    if (!data.bank_name) { UI.toast('銀行名を入力してください', 'error'); return; }
+    if (!data.bank_number) { UI.toast('口座番号を入力してください', 'error'); return; }
+    if (!data.bank_holder) { UI.toast('口座名義を入力してください', 'error'); return; }
+    const res = await API.updateProfile(data);
+    if (res?.success && res.user) { Auth.currentUser = { ...Auth.currentUser, ...res.user }; localStorage.setItem('auth_user', JSON.stringify(Auth.currentUser)); this._state._editingBank = false; UI.toast('口座情報を保存しました'); App.renderPage(); }
+    else UI.toast(res?.error || '保存に失敗しました', 'error');
+  },
+
+  // ════════════════════════════════
+  //  借用書PDF生成（jsPDF）
+  // ════════════════════════════════
+  async _downloadIOU(orderId) {
+    const orders = await API.getOrders();
+    const order = (Array.isArray(orders) ? orders : []).find(o => o.order_id === orderId);
+    if (!order || order.iou_requested !== 'yes') { UI.toast('借用書データが見つかりません', 'error'); return; }
+    UI.toast('借用書を生成中...', 'info');
+    if (!window.jspdf) {
+      await new Promise((resolve, reject) => { const s = document.createElement('script'); s.src = 'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js'; s.onload = resolve; s.onerror = reject; document.head.appendChild(s); });
+    }
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+    const now = new Date();
+    const dateStr = `${now.getFullYear()}/${now.getMonth()+1}/${now.getDate()}`;
+    const amount = Number(order.total || 0).toLocaleString();
+
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(24);
+    doc.text('BORROWING CERTIFICATE', 105, 35, { align: 'center' });
+    doc.setFontSize(12); doc.text('( Shakuyousho )', 105, 43, { align: 'center' });
+    doc.setLineWidth(0.5); doc.line(30, 50, 180, 50);
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(11);
+    let y = 65;
+    doc.text(`Date: ${dateStr}`, 30, y); y += 10;
+    doc.text(`Order ID: ${order.order_id}`, 30, y); y += 10;
+    doc.text(`Borrower: ${order.iou_name || ''}`, 30, y); y += 10;
+    doc.text(`Address: ${order.iou_address || ''}`, 30, y); y += 15;
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(14);
+    doc.text(`Amount: JPY ${amount}`, 30, y); y += 15;
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(11);
+    doc.text(`Product: ${order.product_name || ''}`, 30, y); y += 8;
+    doc.text(`Quantity: ${order.qty || 0}`, 30, y); y += 8;
+    doc.text(`Unit Price: JPY ${Number(order.unit_price || 0).toLocaleString()}`, 30, y); y += 8;
+    doc.text(`Payment: Bank Transfer`, 30, y); y += 15;
+    doc.line(30, y, 180, y); y += 15;
+    doc.setFontSize(10);
+    doc.text('This document certifies the borrowing of the above amount', 30, y); y += 6;
+    doc.text('for the purpose of investment as described.', 30, y); y += 15;
+    doc.text('Signature: ____________________________', 30, y); y += 10;
+    doc.text('Date: ____________________________', 30, y); y += 20;
+    doc.setFontSize(8); doc.setTextColor(150);
+    doc.text('* This is a template. Final content will be provided separately.', 30, y);
+    doc.save(`IOU_${order.order_id}.pdf`);
+    UI.toast('借用書をダウンロードしました');
+  },
+
+  // ════════════════════════════════
+  //  明細アップロード
+  // ════════════════════════════════
+  _uploadReceipt(orderId) {
+    const input = document.createElement('input'); input.type = 'file'; input.accept = 'image/*,.pdf';
+    input.onchange = async (e) => {
+      const file = e.target.files[0]; if (!file) return;
+      if (file.size > 5 * 1024 * 1024) { UI.toast('ファイルは5MB以下にしてください', 'error'); return; }
+      UI.toast('アップロード中...', 'info');
+      const base64 = await new Promise((resolve, reject) => { const reader = new FileReader(); reader.onload = () => resolve(reader.result.split(',')[1]); reader.onerror = () => reject(new Error('読み込み失敗')); reader.readAsDataURL(file); });
+      const res = await API.uploadReceipt({ orderId, fileName: file.name, base64Data: base64, mimeType: file.type || 'image/jpeg' });
+      if (res?.success) { UI.toast('明細をアップロードしました'); API.clearCache(); App.renderPage(); }
+      else UI.toast(res?.error || 'アップロードに失敗しました', 'error');
+    };
+    input.click();
+  },
+};
+
+// ── leader.js ──
+// ═══════════════════════════════════════
+//  リーダー画面
+// ═══════════════════════════════════════
+
+const LeaderPages = {
+  _state: {},
+
+  // ════════════════════════════════
+  //  価格設定
+  // ════════════════════════════════
+  async renderPricing() {
+    const products = await API.getProducts();
+    const groupId = Auth.getGroupId();
+    const groupName = Auth.getGroupName();
+    const list = Array.isArray(products) ? products : [];
+    const active = list.filter(p => p.status === 'active');
+
+    let html = `<h2 class="page-title">価格設定</h2>
+      <div class="text-sm text-gray mb-1">${groupName} の販売単価を調整</div>`;
+
+    if (active.length === 0) return html + UI.empty('販売中の商品はありません', '💰');
+
+    for (const p of active) {
+      const prices = await API.getGroupPrices(p.product_id);
+      const gp = (Array.isArray(prices) ? prices : []).find(g => g.group_id === groupId);
+      const baseSellPrice = p.base_sell_price || 0;
+      const groupSellPrice = gp?.sell_price || baseSellPrice;
+      const profitRate = gp?.profit_rate || 0;
+      const diff = groupSellPrice - baseSellPrice;
+
+      html += UI.card(`
+        <div class="flex-between">
+          <span class="font-bold">${p.name}</span>
+          ${UI.badge(Fmt.productStatus(p.status), Fmt.statusColor(p.status))}
+        </div>
+        <div class="price-info-grid mt-05">
+          ${UI.confirmRow('仕入単価', Fmt.yen(p.buy_price))}
+          ${UI.confirmRow('基準売単価（管理者設定）', Fmt.yen(baseSellPrice))}
+          <div class="divider"></div>
+          ${UI.confirmRow('グループ販売単価', `<span class="font-bold text-lg">${Fmt.yen(groupSellPrice)}</span>`, '')}
+          ${diff !== 0 ? UI.confirmRow('基準との差額', `<span class="${diff > 0 ? 'text-green' : 'text-red'}">${diff > 0 ? '+' : ''}${Fmt.yen(diff)}</span>`) : ''}
+          ${UI.confirmRow('利益率（対仕入）', Fmt.pct(profitRate))}
+        </div>
+        <div class="form-group mt-1">
+          <label class="form-label">販売単価を変更</label>
+          <div class="amount-input-wrap">
+            <span class="amount-prefix">¥</span>
+            <input type="number" class="input input--amount" id="price-${p.product_id}" value="${groupSellPrice}" min="${p.buy_price}" step="100">
+          </div>
+          <div class="text-xs text-gray mt-05">※ 仕入単価（${Fmt.yen(p.buy_price)}）以上で設定してください</div>
+          <button class="btn btn--primary btn--sm mt-05" onclick="LeaderPages._savePrice('${p.product_id}', '${groupId}')">保存</button>
+        </div>
+      `);
+    }
+
+    return html;
+  },
+
+  async _savePrice(productId, groupId) {
+    const input = $(`#price-${productId}`);
+    const sellPrice = Number(input?.value);
+    if (!sellPrice || sellPrice <= 0) { UI.toast('有効な金額を入力してください', 'error'); return; }
+
+    const res = await API.updateGroupPrice({ productId, groupId, sell_price: sellPrice });
+    if (res?.success) {
+      UI.toast('売単価を更新しました');
+      API.clearCache();
       App.renderPage();
     } else {
-      UI.toast(res?.error || '申請に失敗しました', 'error');
+      UI.toast(res?.error || '更新に失敗しました', 'error');
     }
   },
 
-  // お戻しStep5: 完了
-  _retStep5() {
-    const ret = this._state._returnResult;
-    return `
-      ${UI.card(`
-        <div class="text-center">
-          <div class="text-3xl mb-05">✅</div>
-          <h2 class="text-lg font-bold">お戻し申請が完了しました</h2>
+  // ════════════════════════════════
+  //  注文確認
+  // ════════════════════════════════
+  async renderOrders() {
+    const orders = await API.getOrders();
+    const list = Array.isArray(orders) ? orders : [];
+
+    let html = `<h2 class="page-title">注文確認</h2>
+      <div class="text-sm text-gray mb-1">${Auth.getGroupName()} の注文一覧</div>`;
+
+    if (list.length === 0) return html + UI.empty('注文はありません', '📋');
+
+    // ステータス別集計
+    const pending = list.filter(o => ['pending_payment', 'pending_receipt'].includes(o.status));
+    const confirmed = list.filter(o => o.status === 'confirmed');
+
+    html += UI.statGrid([
+      UI.stat('未処理', pending.length, '', pending.length > 0 ? 'red' : ''),
+      UI.stat('確定済', confirmed.length, Fmt.yen(confirmed.reduce((s, o) => s + o.total, 0)), 'green'),
+    ]);
+
+    list.sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)));
+    list.forEach(o => {
+      html += UI.card(`
+        <div class="flex-between">
+          <span class="font-bold">${o.user_name}</span>
+          ${UI.badge(Fmt.orderStatus(o.status), Fmt.statusColor(o.status))}
         </div>
-        <div class="mt-1">
-          ${UI.confirmRow('受取額', Fmt.yen(ret?.return_amount))}
-          ${ret?.keep_amount > 0 ? UI.confirmRow('運用継続', Fmt.yen(ret.keep_amount)) : ''}
-          ${UI.confirmRow('受取方法', ret?.method === 'cash' ? '現金手渡し' : '銀行振込')}
-          ${ret?.desired_date ? UI.confirmRow('希望日', ret.desired_date) : ''}
-        </div>
-        <div class="info-box mt-1"><div class="text-xs">処理状況は「商品状況」タブで確認できます</div></div>
-      `)}
-      <button class="btn btn--primary btn--full mt-1" onclick="App.navigate('mypage')">マイページへ</button>`;
+        ${UI.confirmRow('商品', o.product_name)}
+        ${UI.confirmRow('数量', Fmt.qty(o.qty))}
+        ${UI.confirmRow('金額', Fmt.yen(o.total))}
+        ${o.balance_used > 0 ? UI.confirmRow('残高充当', Fmt.yen(o.balance_used)) : ''}
+        ${o.transfer_amount > 0 ? UI.confirmRow('振込額', Fmt.yen(o.transfer_amount)) : ''}
+        ${UI.confirmRow('注文日', Fmt.dateTime(o.created_at))}
+        ${o.status === 'pending_receipt' ? `<button class="btn btn--primary btn--sm mt-05" onclick="LeaderPages._confirmOrder('${o.order_id}')">入金確認</button>` : ''}
+      `);
+    });
+
+    return html;
+  },
+
+  async _confirmOrder(orderId) {
+    UI.confirm('入金を確認して注文を確定しますか？', async () => {
+      const res = await API.updateOrder(orderId, { status: 'confirmed' });
+      if (res?.success) { UI.toast('注文を確定しました'); App.renderPage(); }
+      else UI.toast(res?.error || '失敗しました', 'error');
+    });
+  },
+
+  // ════════════════════════════════
+  //  お戻し処理
+  // ════════════════════════════════
+  async renderReturns() {
+    const returns = await API.getReturns();
+    const list = Array.isArray(returns) ? returns : [];
+
+    let html = `<h2 class="page-title">お戻し処理</h2>
+      <div class="text-sm text-gray mb-1">${Auth.getGroupName()}</div>`;
+
+    if (list.length === 0) return html + UI.empty('お戻し申請はありません', '↩️');
+
+    const unprocessed = list.filter(r => r.status === 'unprocessed');
+    const processed = list.filter(r => !r.status === 'unprocessed');
+
+    if (unprocessed.length > 0) {
+      html += `<h3 class="section-title">未処理 (${unprocessed.length}件)</h3>`;
+      unprocessed.forEach(r => {
+        html += UI.card(`
+          <div class="flex-between">
+            <span class="font-bold">${r.user_name}</span>
+            ${UI.badge(Fmt.returnStatus(r.status), Fmt.statusColor(r.status))}
+          </div>
+          ${UI.confirmRow('受取額', Fmt.yen(r.return_amount))}
+          ${r.keep_amount > 0 ? UI.confirmRow('運用継続', Fmt.yen(r.keep_amount)) : ''}
+          ${UI.confirmRow('方法', r.method === 'cash' ? '現金手渡し' : '銀行振込')}
+          ${r.desired_date ? UI.confirmRow('希望日', r.desired_date) : ''}
+          <div class="btn-group mt-1">
+            <button class="btn btn--primary btn--sm" onclick="LeaderPages._processReturn('${r.return_id}', '${r.method === 'cash' ? 'handed' : 'remitted'}')">
+              ${r.method === 'cash' ? '手渡し完了' : '送金完了'}
+            </button>
+          </div>
+        `);
+      });
+    }
+
+    if (processed.length > 0) {
+      html += `<h3 class="section-title mt-2">処理済み</h3>`;
+      processed.forEach(r => {
+        html += UI.card(`
+          <div class="flex-between">
+            <span>${r.user_name}</span>
+            ${UI.badge(Fmt.returnStatus(r.status), Fmt.statusColor(r.status))}
+          </div>
+          <div class="text-sm">${Fmt.yen(r.return_amount)} / ${Fmt.dateTime(r.created_at)}</div>
+        `);
+      });
+    }
+
+    return html;
+  },
+
+  async _processReturn(returnId, status) {
+    const label = status === 'handed' ? '手渡し完了' : '送金完了';
+    UI.confirm(`「${label}」に更新しますか？`, async () => {
+      const res = await API.updateReturn(returnId, { status });
+      if (res?.success) { UI.toast('ステータスを更新しました'); App.renderPage(); }
+      else UI.toast(res?.error || '失敗しました', 'error');
+    });
   },
 
   // ════════════════════════════════
@@ -2025,55 +2162,78 @@ const UserPages = {
     const products = await API.getProducts();
     const orders = await API.getOrders();
     const returns = await API.getReturns();
+    const groupId = Auth.getGroupId();
+    const groupName = Auth.getGroupName();
     const list = Array.isArray(products) ? products : [];
-    const myOrders = Array.isArray(orders) ? orders : [];
-    const myReturns = Array.isArray(returns) ? returns : [];
+    const orderList = Array.isArray(orders) ? orders : [];
+    const returnList = Array.isArray(returns) ? returns : [];
 
-    let html = `<h2 class="page-title">商品状況</h2>`;
+    let html = `<h2 class="page-title">商品状況</h2>
+      <div class="text-sm text-gray mb-1">${groupName}</div>`;
+
     if (list.length === 0) return html + UI.empty('商品がありません', '📊');
 
     const active = list.filter(p => p.status === 'active');
     const closed = list.filter(p => p.status === 'closed');
 
     const renderProduct = (p) => {
-      const pOrders = myOrders.filter(o => o.product_id === p.product_id);
-      const pReturns = myReturns.filter(r => pOrders.some(o => o.order_id === r.order_id));
-      const soldPct = p.total_qty > 0 ? Math.round((1 - p.remaining_qty / p.total_qty) * 100) : 0;
+      const pOrders = orderList.filter(o => o.product_id === p.product_id);
+      const pReturns = returnList.filter(r => pOrders.some(o => o.order_id === r.order_id));
+
+      const totalOrdered = pOrders.reduce((s, o) => s + (o.qty || 0), 0);
+      const confirmed = pOrders.filter(o => o.status === 'confirmed');
+      const pendingPayment = pOrders.filter(o => o.status === 'pending_payment');
+      const pendingReceipt = pOrders.filter(o => o.status === 'pending_receipt');
+      const paidAmount = confirmed.reduce((s, o) => s + (o.total || 0), 0);
+
+      const pendingReturns = pReturns.filter(r => r.status === 'unprocessed');
+      const doneReturns = pReturns.filter(r => ['remitted', 'handed'].includes(r.status));
 
       html += `<div class="status-card">
         <div class="status-card__header">
           <span class="font-bold">${p.name}</span>
           ${UI.badge(Fmt.productStatus(p.status), Fmt.statusColor(p.status))}
         </div>
+
         <div class="status-section">
           <div class="status-section__title">📦 在庫</div>
           <div class="status-bar-wrap">
-            <div class="status-bar"><div class="status-bar__fill" style="width:${soldPct}%"></div></div>
-            <div class="status-bar__label">${p.remaining_qty} / ${p.total_qty}</div>
+            <div class="status-bar">
+              <div class="status-bar__fill" style="width:${p.total_qty > 0 ? (1 - p.remaining_qty / p.total_qty) * 100 : 0}%"></div>
+            </div>
+            <div class="status-bar__label">${p.remaining_qty} / ${p.total_qty} 残り</div>
           </div>
         </div>
+
+        <div class="status-section">
+          <div class="status-section__title">💰 入金状況</div>
+          <div class="status-chips">
+            <span class="status-chip status-chip--green">確定 ${confirmed.length}件 (${Fmt.yen(paidAmount)})</span>
+            ${pendingReceipt.length > 0 ? `<span class="status-chip status-chip--gold">明細確認 ${pendingReceipt.length}件</span>` : ''}
+            ${pendingPayment.length > 0 ? `<span class="status-chip status-chip--red">入金待ち ${pendingPayment.length}件</span>` : ''}
+          </div>
+        </div>
+
         ${pOrders.length > 0 ? `
         <div class="status-section">
-          <div class="status-section__title">🛒 あなたの注文</div>
-          ${pOrders.map(o => `<div class="status-my-order">
-            <div class="flex-between">
-              <span>${Fmt.qty(o.qty)} / ${Fmt.yen(o.total)}</span>
+          <div class="status-section__title">👤 注文者</div>
+          <div class="status-users">
+            ${pOrders.map(o => `<div class="status-user-row">
+              <span>${o.user_name}</span>
+              <span>${Fmt.qty(o.qty)}</span>
+              <span>${Fmt.yen(o.total)}</span>
               ${UI.badge(Fmt.orderStatus(o.status), Fmt.statusColor(o.status))}
-            </div>
-            ${o.status === 'pending_payment' ? '<div class="text-xs text-red mt-05">振込・明細アップロードをお願いします</div>' : ''}
-            ${o.status === 'pending_receipt' ? '<div class="text-xs text-gold mt-05">明細を確認中です</div>' : ''}
-            ${o.status === 'confirmed' ? '<div class="text-xs text-green mt-05">入金確認済み</div>' : ''}
-          </div>`).join('')}
+            </div>`).join('')}
+          </div>
         </div>` : ''}
+
         ${pReturns.length > 0 ? `
         <div class="status-section">
           <div class="status-section__title">↩️ お戻し</div>
-          ${pReturns.map(r => `<div class="status-my-order">
-            <div class="flex-between">
-              <span>受取: ${Fmt.yen(r.return_amount)}</span>
-              ${UI.badge(Fmt.returnStatus(r.status), Fmt.statusColor(r.status))}
-            </div>
-          </div>`).join('')}
+          <div class="status-chips">
+            ${pendingReturns.length > 0 ? `<span class="status-chip status-chip--red">未処理 ${pendingReturns.length}件</span>` : ''}
+            ${doneReturns.length > 0 ? `<span class="status-chip status-chip--green">処理済 ${doneReturns.length}件</span>` : ''}
+          </div>
         </div>` : ''}
       </div>`;
     };
@@ -2086,197 +2246,12 @@ const UserPages = {
       html += `<h3 class="section-title mt-2">締切済み</h3>`;
       closed.forEach(renderProduct);
     }
+
     return html;
-  },
-
-  // ════════════════════════════════
-  //  マイページ
-  // ════════════════════════════════
-  async renderMyPage() {
-    const user = Auth.currentUser;
-    const orders = await API.getOrders();
-    const returns = await API.getReturns();
-    const myOrders = Array.isArray(orders) ? orders : [];
-    const myReturns = Array.isArray(returns) ? returns : [];
-    const balance = user?.reinvest_balance || 0;
-    const hasBank = user.bank_name && user.bank_number;
-
-    let html = `<h2 class="page-title">マイページ</h2>`;
-
-    // プロフィール
-    html += UI.card(`
-      ${UI.confirmRow('名前', user.name)}
-      ${UI.confirmRow('グループ', user.group_name || '-')}
-      ${user.email ? UI.confirmRow('メール', user.email) : ''}
-    `);
-
-    // 残高
-    if (balance > 0) {
-      html += `<div class="balance-banner">
-        <div class="balance-banner__amount">${Fmt.yen(balance)}</div>
-        <div class="balance-banner__label">運用継続中の残高</div>
-      </div>`;
-    }
-
-    // ── 口座情報 ──
-    html += `<h3 class="section-title mt-2">🏦 振込先口座</h3>`;
-    if (this._state._editingBank) {
-      html += UI.card(`
-        <div class="form-group">
-          <label class="form-label">銀行名 <span class="text-red">*</span></label>
-          <input type="text" class="input" id="mb-bank" value="${user.bank_name || ''}" placeholder="○○銀行">
-        </div>
-        <div class="form-group">
-          <label class="form-label">支店名</label>
-          <input type="text" class="input" id="mb-branch" value="${user.bank_branch || ''}" placeholder="△△支店">
-        </div>
-        <div class="form-group">
-          <label class="form-label">口座種類</label>
-          <select class="input" id="mb-type">
-            <option value="普通" ${(user.bank_type || '普通') === '普通' ? 'selected' : ''}>普通</option>
-            <option value="当座" ${user.bank_type === '当座' ? 'selected' : ''}>当座</option>
-          </select>
-        </div>
-        <div class="form-group">
-          <label class="form-label">口座番号 <span class="text-red">*</span></label>
-          <input type="text" class="input" id="mb-number" value="${user.bank_number || ''}" placeholder="1234567" inputmode="numeric">
-        </div>
-        <div class="form-group">
-          <label class="form-label">口座名義（カナ）<span class="text-red">*</span></label>
-          <input type="text" class="input" id="mb-holder" value="${user.bank_holder || ''}" placeholder="ヤマダ タロウ">
-        </div>
-        <div class="btn-group">
-          <button class="btn btn--ghost" onclick="UserPages._state._editingBank=false;App.renderPage({soft:true})">キャンセル</button>
-          <button class="btn btn--primary" onclick="UserPages._saveBankInfo()">保存</button>
-        </div>
-      `);
-    } else if (hasBank) {
-      html += UI.card(`
-        <div class="bank-info">
-          ${UI.confirmRow('銀行', user.bank_name)}
-          ${user.bank_branch ? UI.confirmRow('支店', user.bank_branch) : ''}
-          ${UI.confirmRow('口座', (user.bank_type || '普通') + ' ' + user.bank_number)}
-          ${UI.confirmRow('名義', user.bank_holder)}
-        </div>
-        <button class="btn btn--outline btn--sm mt-1" onclick="UserPages._state._editingBank=true;App.renderPage({soft:true})">口座情報を変更</button>
-      `);
-    } else {
-      html += `<div class="profile-bank-empty">
-        <div class="profile-bank-empty__text">⚠️ 口座情報が未登録です</div>
-        <div class="text-xs text-gray mb-1">お戻しで銀行振込を選ぶ際に必要です</div>
-        <button class="btn btn--primary btn--sm" onclick="UserPages._state._editingBank=true;App.renderPage({soft:true})">口座情報を登録する</button>
-      </div>`;
-    }
-
-    // ── 注文履歴 ──
-    html += `<h3 class="section-title mt-2">注文履歴</h3>`;
-    if (myOrders.length === 0) {
-      html += UI.card('<div class="text-sm text-gray text-center">注文はありません</div>');
-    } else {
-      myOrders.forEach(o => {
-        const canReturn = o.status === 'confirmed' && !myReturns.find(r => r.order_id === o.order_id);
-        const needUpload = ['pending_payment', 'pending_receipt'].includes(o.status);
-        html += `<div class="order-card">
-          <div class="order-card__header">
-            <span class="order-card__name">${o.product_name}</span>
-            ${UI.badge(Fmt.orderStatus(o.status), Fmt.statusColor(o.status))}
-          </div>
-          <div class="order-card__body">
-            ${UI.confirmRow('数量', Fmt.qty(o.qty))}
-            ${UI.confirmRow('合計', Fmt.yen(o.total))}
-            ${o.balance_used > 0 ? UI.confirmRow('残高充当', Fmt.yen(o.balance_used)) : ''}
-            ${o.transfer_amount > 0 ? UI.confirmRow('振込額', Fmt.yen(o.transfer_amount)) : ''}
-            ${UI.confirmRow('注文日', Fmt.date(o.created_at))}
-          </div>
-          <div class="order-card__actions">
-            ${canReturn ? `<button class="btn btn--outline btn--sm" onclick="UserPages.goReturn('${o.order_id}')">お戻し申請</button>` : ''}
-            ${needUpload && !o.receipt_url ? `<button class="btn btn--primary btn--sm" onclick="UserPages._uploadReceipt('${o.order_id}')">明細アップロード</button>` : ''}
-            ${o.receipt_url ? `<a href="${o.receipt_url}" target="_blank" rel="noopener" class="btn btn--outline btn--sm">📎 明細を見る</a>` : ''}
-          </div>
-        </div>`;
-      });
-    }
-
-    // ── お戻し履歴 ──
-    if (myReturns.length > 0) {
-      html += `<h3 class="section-title mt-2">お戻し履歴</h3>`;
-      myReturns.forEach(r => {
-        html += UI.card(`
-          <div class="flex-between">
-            <span class="font-bold">${r.product_name || '商品'}</span>
-            ${UI.badge(Fmt.returnStatus(r.status), Fmt.statusColor(r.status))}
-          </div>
-          ${UI.confirmRow('受取額', Fmt.yen(r.return_amount))}
-          ${r.keep_amount > 0 ? UI.confirmRow('運用継続', Fmt.yen(r.keep_amount)) : ''}
-          ${UI.confirmRow('受取方法', r.method === 'cash' ? '現金手渡し' : '銀行振込')}
-          ${UI.confirmRow('申請日', Fmt.date(r.created_at))}
-        `);
-      });
-    }
-
-    html += `<button class="btn btn--ghost btn--full mt-2" onclick="App.doLogout()">ログアウト</button>`;
-    return html;
-  },
-
-  async _saveBankInfo() {
-    const data = {
-      bank_name: $('#mb-bank')?.value?.trim(),
-      bank_branch: $('#mb-branch')?.value?.trim(),
-      bank_type: $('#mb-type')?.value,
-      bank_number: $('#mb-number')?.value?.trim(),
-      bank_holder: $('#mb-holder')?.value?.trim(),
-    };
-    if (!data.bank_name) { UI.toast('銀行名を入力してください', 'error'); return; }
-    if (!data.bank_number) { UI.toast('口座番号を入力してください', 'error'); return; }
-    if (!data.bank_holder) { UI.toast('口座名義を入力してください', 'error'); return; }
-
-    const res = await API.updateProfile(data);
-    if (res?.success && res.user) {
-      Auth.currentUser = { ...Auth.currentUser, ...res.user };
-      localStorage.setItem('auth_user', JSON.stringify(Auth.currentUser));
-      this._state._editingBank = false;
-      UI.toast('口座情報を保存しました');
-      App.renderPage();
-    } else {
-      UI.toast(res?.error || '保存に失敗しました', 'error');
-    }
-  },
-
-  // ════════════════════════════════
-  //  明細アップロード
-  // ════════════════════════════════
-  _uploadReceipt(orderId) {
-    const input = document.createElement('input');
-    input.type = 'file';
-    input.accept = 'image/*,.pdf';
-    input.onchange = async (e) => {
-      const file = e.target.files[0];
-      if (!file) return;
-      if (file.size > 5 * 1024 * 1024) { UI.toast('ファイルは5MB以下にしてください', 'error'); return; }
-
-      UI.toast('アップロード中...', 'info');
-      const base64 = await new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => resolve(reader.result.split(',')[1]);
-        reader.onerror = () => reject(new Error('読み込み失敗'));
-        reader.readAsDataURL(file);
-      });
-
-      const res = await API.uploadReceipt({
-        orderId, fileName: file.name, base64Data: base64, mimeType: file.type || 'image/jpeg',
-      });
-      if (res?.success) {
-        UI.toast('明細をアップロードしました');
-        API.clearCache();
-        App.renderPage();
-      } else {
-        UI.toast(res?.error || 'アップロードに失敗しました', 'error');
-      }
-    };
-    input.click();
   },
 };
 
+// ── admin.js ──
 // ═══════════════════════════════════════
 //  管理者画面
 // ═══════════════════════════════════════
@@ -2414,8 +2389,20 @@ const AdminPages = {
         ${UI.confirmRow('残高充当', '− ' + Fmt.yen(o.balance_used), 'text-green')}
         ${UI.confirmRow('振込額', Fmt.yen(o.transfer_amount), 'font-bold text-lg')}
       ` : ''}
+      ${UI.confirmRow('支払方法', o.payment_method === 'cash' ? '現金手渡し' : '銀行振込')}
       ${o.transfer_amount === 0 ? `<div class="success-box mt-05">残高のみで購入完了</div>` : ''}
     `);
+
+    // 借用書情報
+    if (o.iou_requested === 'yes') {
+      html += UI.card(`
+        <h3 class="section-title">📄 借用書</h3>
+        ${UI.confirmRow('希望', '有り')}
+        ${o.iou_name ? UI.confirmRow('宛名', o.iou_name) : ''}
+        ${o.iou_address ? UI.confirmRow('住所', o.iou_address) : ''}
+        ${o.status === 'confirmed' ? `<button class="btn btn--primary btn--sm mt-1" onclick="AdminPages._downloadIOU('${o.order_id}')">📄 借用書PDFをダウンロード</button>` : '<div class="text-xs text-gray mt-05">※ 決済確定後にダウンロード可能になります</div>'}
+      `);
+    }
 
     // 振込明細
     if (o.receipt_url) {
@@ -2674,8 +2661,8 @@ const AdminPages = {
 
     let html = `<h2 class="page-title">お戻し管理</h2>`;
 
-    const unprocessed = list.filter(r => ['unprocessed', 'applied'].includes(r.status));
-    const processed = list.filter(r => !['unprocessed', 'applied'].includes(r.status));
+    const unprocessed = list.filter(r => r.status === 'unprocessed');
+    const processed = list.filter(r => !r.status === 'unprocessed');
 
     if (unprocessed.length === 0 && processed.length === 0) return html + UI.empty('お戻し申請はありません', '↩️');
 
@@ -2694,10 +2681,9 @@ const AdminPages = {
           ${r.desired_date ? UI.confirmRow('希望日', r.desired_date) : ''}
           ${UI.confirmRow('申請日', Fmt.dateTime(r.created_at))}
           <div class="btn-group mt-1">
-            <button class="btn btn--primary btn--sm" onclick="AdminPages._processReturn('${r.return_id}', '${r.method === 'cash' ? 'handed' : 'remitted'}')">
-              ${r.method === 'cash' ? '手渡し済み' : '送金済み'}
+            <button class="btn btn--primary btn--full" onclick="AdminPages._processReturn('${r.return_id}', '${r.method === 'cash' ? 'handed' : 'remitted'}')">
+              ✅ ${r.method === 'cash' ? '手渡し完了' : '送金完了'}
             </button>
-            <button class="btn btn--outline btn--sm" onclick="AdminPages._processReturn('${r.return_id}', 'processing')">処理中</button>
           </div>
         `);
       });
@@ -2720,7 +2706,7 @@ const AdminPages = {
   },
 
   async _processReturn(returnId, status) {
-    const labels = { processing: '処理中', remitted: '送金済み', handed: '手渡し済み' };
+    const labels = { remitted: '送金完了', handed: '手渡し完了' };
     UI.confirm(`ステータスを「${labels[status]}」に変更しますか？`, async () => {
       const res = await API.updateReturn(returnId, { status });
       if (res?.success) { UI.toast('ステータスを更新しました'); App.renderPage(); }
@@ -2920,6 +2906,20 @@ const AdminPages = {
   },
 
   // ════════════════════════════════
+  //  借用書PDF（管理者用）
+  // ════════════════════════════════
+  async _downloadIOU(orderId) {
+    const orders = await API.getOrders();
+    const o = (Array.isArray(orders) ? orders : []).find(x => x.order_id === orderId);
+    if (!o) { UI.toast('注文が見つかりません', 'error'); return; }
+    if (typeof UserPages._downloadIOU === 'function') {
+      await UserPages._downloadIOU(orderId);
+    } else {
+      UI.toast('PDF生成機能が利用できません', 'error');
+    }
+  },
+
+  // ════════════════════════════════
   //  設定（振込先口座など）
   // ════════════════════════════════
   async renderSettings() {
@@ -2995,285 +2995,7 @@ const AdminPages = {
   },
 };
 
-// ═══════════════════════════════════════
-//  リーダー画面
-// ═══════════════════════════════════════
-
-const LeaderPages = {
-  _state: {},
-
-  // ════════════════════════════════
-  //  価格設定
-  // ════════════════════════════════
-  async renderPricing() {
-    const products = await API.getProducts();
-    const groupId = Auth.getGroupId();
-    const groupName = Auth.getGroupName();
-    const list = Array.isArray(products) ? products : [];
-    const active = list.filter(p => p.status === 'active');
-
-    let html = `<h2 class="page-title">価格設定</h2>
-      <div class="text-sm text-gray mb-1">${groupName} の販売単価を調整</div>`;
-
-    if (active.length === 0) return html + UI.empty('販売中の商品はありません', '💰');
-
-    for (const p of active) {
-      const prices = await API.getGroupPrices(p.product_id);
-      const gp = (Array.isArray(prices) ? prices : []).find(g => g.group_id === groupId);
-      const baseSellPrice = p.base_sell_price || 0;
-      const groupSellPrice = gp?.sell_price || baseSellPrice;
-      const profitRate = gp?.profit_rate || 0;
-      const diff = groupSellPrice - baseSellPrice;
-
-      html += UI.card(`
-        <div class="flex-between">
-          <span class="font-bold">${p.name}</span>
-          ${UI.badge(Fmt.productStatus(p.status), Fmt.statusColor(p.status))}
-        </div>
-        <div class="price-info-grid mt-05">
-          ${UI.confirmRow('仕入単価', Fmt.yen(p.buy_price))}
-          ${UI.confirmRow('基準売単価（管理者設定）', Fmt.yen(baseSellPrice))}
-          <div class="divider"></div>
-          ${UI.confirmRow('グループ販売単価', `<span class="font-bold text-lg">${Fmt.yen(groupSellPrice)}</span>`, '')}
-          ${diff !== 0 ? UI.confirmRow('基準との差額', `<span class="${diff > 0 ? 'text-green' : 'text-red'}">${diff > 0 ? '+' : ''}${Fmt.yen(diff)}</span>`) : ''}
-          ${UI.confirmRow('利益率（対仕入）', Fmt.pct(profitRate))}
-        </div>
-        <div class="form-group mt-1">
-          <label class="form-label">販売単価を変更</label>
-          <div class="amount-input-wrap">
-            <span class="amount-prefix">¥</span>
-            <input type="number" class="input input--amount" id="price-${p.product_id}" value="${groupSellPrice}" min="${p.buy_price}" step="100">
-          </div>
-          <div class="text-xs text-gray mt-05">※ 仕入単価（${Fmt.yen(p.buy_price)}）以上で設定してください</div>
-          <button class="btn btn--primary btn--sm mt-05" onclick="LeaderPages._savePrice('${p.product_id}', '${groupId}')">保存</button>
-        </div>
-      `);
-    }
-
-    return html;
-  },
-
-  async _savePrice(productId, groupId) {
-    const input = $(`#price-${productId}`);
-    const sellPrice = Number(input?.value);
-    if (!sellPrice || sellPrice <= 0) { UI.toast('有効な金額を入力してください', 'error'); return; }
-
-    const res = await API.updateGroupPrice({ productId, groupId, sell_price: sellPrice });
-    if (res?.success) {
-      UI.toast('売単価を更新しました');
-      API.clearCache();
-      App.renderPage();
-    } else {
-      UI.toast(res?.error || '更新に失敗しました', 'error');
-    }
-  },
-
-  // ════════════════════════════════
-  //  注文確認
-  // ════════════════════════════════
-  async renderOrders() {
-    const orders = await API.getOrders();
-    const list = Array.isArray(orders) ? orders : [];
-
-    let html = `<h2 class="page-title">注文確認</h2>
-      <div class="text-sm text-gray mb-1">${Auth.getGroupName()} の注文一覧</div>`;
-
-    if (list.length === 0) return html + UI.empty('注文はありません', '📋');
-
-    // ステータス別集計
-    const pending = list.filter(o => ['pending_payment', 'pending_receipt'].includes(o.status));
-    const confirmed = list.filter(o => o.status === 'confirmed');
-
-    html += UI.statGrid([
-      UI.stat('未処理', pending.length, '', pending.length > 0 ? 'red' : ''),
-      UI.stat('確定済', confirmed.length, Fmt.yen(confirmed.reduce((s, o) => s + o.total, 0)), 'green'),
-    ]);
-
-    list.sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)));
-    list.forEach(o => {
-      html += UI.card(`
-        <div class="flex-between">
-          <span class="font-bold">${o.user_name}</span>
-          ${UI.badge(Fmt.orderStatus(o.status), Fmt.statusColor(o.status))}
-        </div>
-        ${UI.confirmRow('商品', o.product_name)}
-        ${UI.confirmRow('数量', Fmt.qty(o.qty))}
-        ${UI.confirmRow('金額', Fmt.yen(o.total))}
-        ${o.balance_used > 0 ? UI.confirmRow('残高充当', Fmt.yen(o.balance_used)) : ''}
-        ${o.transfer_amount > 0 ? UI.confirmRow('振込額', Fmt.yen(o.transfer_amount)) : ''}
-        ${UI.confirmRow('注文日', Fmt.dateTime(o.created_at))}
-        ${o.status === 'pending_receipt' ? `<button class="btn btn--primary btn--sm mt-05" onclick="LeaderPages._confirmOrder('${o.order_id}')">入金確認</button>` : ''}
-      `);
-    });
-
-    return html;
-  },
-
-  async _confirmOrder(orderId) {
-    UI.confirm('入金を確認して注文を確定しますか？', async () => {
-      const res = await API.updateOrder(orderId, { status: 'confirmed' });
-      if (res?.success) { UI.toast('注文を確定しました'); App.renderPage(); }
-      else UI.toast(res?.error || '失敗しました', 'error');
-    });
-  },
-
-  // ════════════════════════════════
-  //  お戻し処理
-  // ════════════════════════════════
-  async renderReturns() {
-    const returns = await API.getReturns();
-    const list = Array.isArray(returns) ? returns : [];
-
-    let html = `<h2 class="page-title">お戻し処理</h2>
-      <div class="text-sm text-gray mb-1">${Auth.getGroupName()}</div>`;
-
-    if (list.length === 0) return html + UI.empty('お戻し申請はありません', '↩️');
-
-    const unprocessed = list.filter(r => ['unprocessed', 'applied'].includes(r.status));
-    const processed = list.filter(r => !['unprocessed', 'applied'].includes(r.status));
-
-    if (unprocessed.length > 0) {
-      html += `<h3 class="section-title">未処理 (${unprocessed.length}件)</h3>`;
-      unprocessed.forEach(r => {
-        html += UI.card(`
-          <div class="flex-between">
-            <span class="font-bold">${r.user_name}</span>
-            ${UI.badge(Fmt.returnStatus(r.status), Fmt.statusColor(r.status))}
-          </div>
-          ${UI.confirmRow('受取額', Fmt.yen(r.return_amount))}
-          ${r.keep_amount > 0 ? UI.confirmRow('運用継続', Fmt.yen(r.keep_amount)) : ''}
-          ${UI.confirmRow('方法', r.method === 'cash' ? '現金手渡し' : '銀行振込')}
-          ${r.desired_date ? UI.confirmRow('希望日', r.desired_date) : ''}
-          <div class="btn-group mt-1">
-            <button class="btn btn--primary btn--sm" onclick="LeaderPages._processReturn('${r.return_id}', '${r.method === 'cash' ? 'handed' : 'remitted'}')">
-              ${r.method === 'cash' ? '手渡し完了' : '送金完了'}
-            </button>
-          </div>
-        `);
-      });
-    }
-
-    if (processed.length > 0) {
-      html += `<h3 class="section-title mt-2">処理済み</h3>`;
-      processed.forEach(r => {
-        html += UI.card(`
-          <div class="flex-between">
-            <span>${r.user_name}</span>
-            ${UI.badge(Fmt.returnStatus(r.status), Fmt.statusColor(r.status))}
-          </div>
-          <div class="text-sm">${Fmt.yen(r.return_amount)} / ${Fmt.dateTime(r.created_at)}</div>
-        `);
-      });
-    }
-
-    return html;
-  },
-
-  async _processReturn(returnId, status) {
-    const label = status === 'handed' ? '手渡し完了' : '送金完了';
-    UI.confirm(`「${label}」に更新しますか？`, async () => {
-      const res = await API.updateReturn(returnId, { status });
-      if (res?.success) { UI.toast('ステータスを更新しました'); App.renderPage(); }
-      else UI.toast(res?.error || '失敗しました', 'error');
-    });
-  },
-
-  // ════════════════════════════════
-  //  商品状況
-  // ════════════════════════════════
-  async renderStatus() {
-    const products = await API.getProducts();
-    const orders = await API.getOrders();
-    const returns = await API.getReturns();
-    const groupId = Auth.getGroupId();
-    const groupName = Auth.getGroupName();
-    const list = Array.isArray(products) ? products : [];
-    const orderList = Array.isArray(orders) ? orders : [];
-    const returnList = Array.isArray(returns) ? returns : [];
-
-    let html = `<h2 class="page-title">商品状況</h2>
-      <div class="text-sm text-gray mb-1">${groupName}</div>`;
-
-    if (list.length === 0) return html + UI.empty('商品がありません', '📊');
-
-    const active = list.filter(p => p.status === 'active');
-    const closed = list.filter(p => p.status === 'closed');
-
-    const renderProduct = (p) => {
-      const pOrders = orderList.filter(o => o.product_id === p.product_id);
-      const pReturns = returnList.filter(r => pOrders.some(o => o.order_id === r.order_id));
-
-      const totalOrdered = pOrders.reduce((s, o) => s + (o.qty || 0), 0);
-      const confirmed = pOrders.filter(o => o.status === 'confirmed');
-      const pendingPayment = pOrders.filter(o => o.status === 'pending_payment');
-      const pendingReceipt = pOrders.filter(o => o.status === 'pending_receipt');
-      const paidAmount = confirmed.reduce((s, o) => s + (o.total || 0), 0);
-
-      const pendingReturns = pReturns.filter(r => ['unprocessed', 'applied', 'processing'].includes(r.status));
-      const doneReturns = pReturns.filter(r => ['remitted', 'handed'].includes(r.status));
-
-      html += `<div class="status-card">
-        <div class="status-card__header">
-          <span class="font-bold">${p.name}</span>
-          ${UI.badge(Fmt.productStatus(p.status), Fmt.statusColor(p.status))}
-        </div>
-
-        <div class="status-section">
-          <div class="status-section__title">📦 在庫</div>
-          <div class="status-bar-wrap">
-            <div class="status-bar">
-              <div class="status-bar__fill" style="width:${p.total_qty > 0 ? (1 - p.remaining_qty / p.total_qty) * 100 : 0}%"></div>
-            </div>
-            <div class="status-bar__label">${p.remaining_qty} / ${p.total_qty} 残り</div>
-          </div>
-        </div>
-
-        <div class="status-section">
-          <div class="status-section__title">💰 入金状況</div>
-          <div class="status-chips">
-            <span class="status-chip status-chip--green">確定 ${confirmed.length}件 (${Fmt.yen(paidAmount)})</span>
-            ${pendingReceipt.length > 0 ? `<span class="status-chip status-chip--gold">明細確認 ${pendingReceipt.length}件</span>` : ''}
-            ${pendingPayment.length > 0 ? `<span class="status-chip status-chip--red">入金待ち ${pendingPayment.length}件</span>` : ''}
-          </div>
-        </div>
-
-        ${pOrders.length > 0 ? `
-        <div class="status-section">
-          <div class="status-section__title">👤 注文者</div>
-          <div class="status-users">
-            ${pOrders.map(o => `<div class="status-user-row">
-              <span>${o.user_name}</span>
-              <span>${Fmt.qty(o.qty)}</span>
-              <span>${Fmt.yen(o.total)}</span>
-              ${UI.badge(Fmt.orderStatus(o.status), Fmt.statusColor(o.status))}
-            </div>`).join('')}
-          </div>
-        </div>` : ''}
-
-        ${pReturns.length > 0 ? `
-        <div class="status-section">
-          <div class="status-section__title">↩️ お戻し</div>
-          <div class="status-chips">
-            ${pendingReturns.length > 0 ? `<span class="status-chip status-chip--red">未処理 ${pendingReturns.length}件</span>` : ''}
-            ${doneReturns.length > 0 ? `<span class="status-chip status-chip--green">処理済 ${doneReturns.length}件</span>` : ''}
-          </div>
-        </div>` : ''}
-      </div>`;
-    };
-
-    if (active.length > 0) {
-      html += `<h3 class="section-title">販売中</h3>`;
-      active.forEach(renderProduct);
-    }
-    if (closed.length > 0) {
-      html += `<h3 class="section-title mt-2">締切済み</h3>`;
-      closed.forEach(renderProduct);
-    }
-
-    return html;
-  },
-};
-
+// ── app.js ──
 // ═══════════════════════════════════════
 //  メインアプリケーション v3.0
 // ═══════════════════════════════════════
@@ -3483,6 +3205,8 @@ const App = {
     }
   },
 };
+
+document.addEventListener('DOMContentLoaded', () => App.init());
 
 document.addEventListener('DOMContentLoaded', () => App.init());
 </script>
