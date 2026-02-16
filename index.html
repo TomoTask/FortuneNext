@@ -1255,7 +1255,7 @@ const UserPages = {
   async _submitReturn() {
     const data = {
       orderId: this._state.returnOrder,
-      action: this._state.returnAction,
+      return_action: this._state.returnAction,
       returnAmount: this._state.returnAmount,
       method: this._state.returnMethod,
       desiredDate: this._state.returnDate || '',
