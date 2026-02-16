@@ -387,6 +387,32 @@ select.input { appearance: none; background: white url("data:image/svg+xml,%3Csv
 .receipt-link__text { flex: 1; }
 .receipt-link__arrow { color: var(--c-gray-400); }
 
+/* ── Status Card ── */
+.status-card { background: white; border-radius: var(--radius); padding: 16px; margin-bottom: 12px; box-shadow: var(--shadow); }
+.status-card__header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+.status-section { padding: 8px 0; border-top: 1px solid var(--c-gray-100); }
+.status-section__title { font-size: 12px; font-weight: 700; color: var(--c-gray-600); margin-bottom: 6px; }
+
+.status-bar-wrap { display: flex; align-items: center; gap: 10px; }
+.status-bar { flex: 1; height: 8px; background: var(--c-gray-100); border-radius: 4px; overflow: hidden; }
+.status-bar__fill { height: 100%; background: var(--c-primary); border-radius: 4px; transition: width .3s; }
+.status-bar__label { font-size: 11px; color: var(--c-gray-500); white-space: nowrap; }
+
+.status-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.status-chip { font-size: 11px; padding: 3px 8px; border-radius: 10px; font-weight: 700; }
+.status-chip--green { background: #ECFDF5; color: #059669; }
+.status-chip--red { background: #FEF2F2; color: #DC2626; }
+.status-chip--gold { background: #FFFBEB; color: #D97706; }
+
+.status-users { font-size: 12px; }
+.status-user-row { display: flex; align-items: center; gap: 8px; padding: 4px 0; border-bottom: 1px solid var(--c-gray-50); }
+.status-user-row:last-child { border-bottom: none; }
+.status-user-row span:first-child { flex: 1; }
+
+.status-my-order { padding: 6px 0; border-bottom: 1px solid var(--c-gray-50); }
+.status-my-order:last-child { border-bottom: none; }
+.text-gold { color: #D97706; }
+
 /* ── Schedule Grid ── */
 .schedule-hint { background: #FEF3C7; border: 1px solid #FDE68A; border-radius: var(--radius-sm); padding: 6px 10px; font-size: 11px; font-weight: 600; color: #92400E; margin-bottom: 8px; }
 .sch-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; }
@@ -754,7 +780,7 @@ const UserPages = {
   // ── 状態管理 ──
   _state: {},
   _reset() {
-    this._state = { selectedProduct: null, purchaseStep: 0, purchaseQty: 1, balanceUsed: 0, returnStep: 0, returnOrder: null, returnAction: null, returnAmount: 0, returnMethod: null, returnDate: null, chatThread: null };
+    this._state = { selectedProduct: null, purchaseStep: 0, purchaseQty: 1, balanceUsed: 0, returnStep: 0, returnOrder: null, returnAction: null, returnAmount: 0, returnMethod: null, returnDate: null };
   },
 
   // ════════════════════════════════
@@ -1264,61 +1290,89 @@ const UserPages = {
           ${UI.confirmRow('受取方法', ret?.method === 'cash' ? '現金手渡し' : '銀行振込')}
           ${ret?.desired_date ? UI.confirmRow('希望日', ret.desired_date) : ''}
         </div>
-        <div class="info-box mt-1"><div class="text-xs">処理が完了しましたらメッセージでお知らせします</div></div>
+        <div class="info-box mt-1"><div class="text-xs">処理状況は「商品状況」タブで確認できます</div></div>
       `)}
       <button class="btn btn--primary btn--full mt-1" onclick="App.navigate('mypage')">マイページへ</button>`;
   },
 
   // ════════════════════════════════
-  //  メッセージ
+  //  商品状況（ユーザー向け）
   // ════════════════════════════════
-  async renderMessages() {
-    if (this._state.chatThread) return this._renderChat();
+  async renderStatus() {
+    const products = await API.getProducts();
+    const orders = await API.getOrders();
+    const returns = await API.getReturns();
+    const list = Array.isArray(products) ? products : [];
+    const myOrders = Array.isArray(orders) ? orders : [];
+    const myReturns = Array.isArray(returns) ? returns : [];
 
-    const threads = await API.getThreads();
-    if (!Array.isArray(threads) || threads.length === 0) return UI.empty('メッセージはありません', '💬');
+    let html = `<h2 class="page-title">商品状況</h2>`;
 
-    return threads.map(t => `
-      <div class="thread-card" onclick="UserPages._state.chatThread='${t.thread_id}';App.renderPage()">
-        <div class="thread-card__title">${t.title}</div>
-        <div class="thread-card__preview">${t.last_message || '...'}</div>
-        <div class="thread-card__time">${Fmt.dateTime(t.last_at)}</div>
-      </div>
-    `).join('');
-  },
+    if (list.length === 0) return html + UI.empty('商品がありません', '📊');
 
-  async _renderChat() {
-    const threadId = this._state.chatThread;
-    const msgs = await API.getMessages(threadId);
-    const messages = Array.isArray(msgs) ? msgs : [];
+    const active = list.filter(p => p.status === 'active');
+    const closed = list.filter(p => p.status === 'closed');
 
-    let html = `<button class="btn btn--ghost btn--sm mb-1" onclick="UserPages._state.chatThread=null;App.renderPage()">← スレッド一覧</button>`;
-    html += `<div class="chat-messages" id="chat-messages">`;
-    messages.forEach(m => {
-      html += `<div class="chat-msg ${m.is_mine ? 'chat-msg--mine' : ''}">
-        ${!m.is_mine ? `<div class="chat-msg__name">${m.sender_name}</div>` : ''}
-        <div class="chat-msg__bubble">${m.text}</div>
-        <div class="chat-msg__time">${Fmt.dateTime(m.created_at)}</div>
+    const renderProduct = (p) => {
+      const pOrders = myOrders.filter(o => o.product_id === p.product_id);
+      const pReturns = myReturns.filter(r => pOrders.some(o => o.order_id === r.order_id));
+
+      html += `<div class="status-card">
+        <div class="status-card__header">
+          <span class="font-bold">${p.name}</span>
+          ${UI.badge(Fmt.productStatus(p.status), Fmt.statusColor(p.status))}
+        </div>
+
+        <div class="status-section">
+          <div class="status-section__title">📦 在庫</div>
+          <div class="status-bar-wrap">
+            <div class="status-bar">
+              <div class="status-bar__fill" style="width:${p.total_qty > 0 ? (1 - p.remaining_qty / p.total_qty) * 100 : 0}%"></div>
+            </div>
+            <div class="status-bar__label">${p.remaining_qty} / ${p.total_qty} 残り</div>
+          </div>
+        </div>
+
+        ${pOrders.length > 0 ? `
+        <div class="status-section">
+          <div class="status-section__title">🛒 あなたの注文</div>
+          ${pOrders.map(o => `<div class="status-my-order">
+            <div class="flex-between">
+              <span>${Fmt.qty(o.qty)} / ${Fmt.yen(o.total)}</span>
+              ${UI.badge(Fmt.orderStatus(o.status), Fmt.statusColor(o.status))}
+            </div>
+            ${o.status === 'pending_payment' ? '<div class="text-xs text-red mt-05">振込・明細アップロードをお願いします</div>' : ''}
+            ${o.status === 'pending_receipt' ? '<div class="text-xs text-gold mt-05">管理者が明細を確認中です</div>' : ''}
+            ${o.status === 'confirmed' ? '<div class="text-xs text-green mt-05">入金確認済み</div>' : ''}
+          </div>`).join('')}
+        </div>` : `
+        <div class="status-section">
+          <div class="text-xs text-gray">まだ注文していません</div>
+        </div>`}
+
+        ${pReturns.length > 0 ? `
+        <div class="status-section">
+          <div class="status-section__title">↩️ お戻し</div>
+          ${pReturns.map(r => `<div class="status-my-order">
+            <div class="flex-between">
+              <span>受取: ${Fmt.yen(r.return_amount)}</span>
+              ${UI.badge(Fmt.returnStatus(r.status), Fmt.statusColor(r.status))}
+            </div>
+          </div>`).join('')}
+        </div>` : ''}
       </div>`;
-    });
-    html += `</div>`;
-    html += `<div class="chat-input">
-      <input type="text" class="input" id="chat-text" placeholder="メッセージを入力" onkeydown="if(event.key==='Enter')UserPages._sendMsg()">
-      <button class="btn btn--primary" onclick="UserPages._sendMsg()">送信</button>
-    </div>`;
+    };
 
-    // スクロール
-    setTimeout(() => { const el = $('#chat-messages'); if (el) el.scrollTop = el.scrollHeight; }, 100);
+    if (active.length > 0) {
+      html += `<h3 class="section-title">販売中</h3>`;
+      active.forEach(renderProduct);
+    }
+    if (closed.length > 0) {
+      html += `<h3 class="section-title mt-2">締切済み</h3>`;
+      closed.forEach(renderProduct);
+    }
+
     return html;
-  },
-
-  async _sendMsg() {
-    const input = $('#chat-text');
-    const text = input?.value?.trim();
-    if (!text) return;
-    input.value = '';
-    await API.sendMessage({ threadId: this._state.chatThread, text });
-    App.renderPage();
   },
 
   // ════════════════════════════════
@@ -1446,7 +1500,7 @@ const UserPages = {
 // ═══════════════════════════════════════
 
 const AdminPages = {
-  _state: { editProduct: null, chatThread: null, orderFilter: 'all', selectedOrder: null, editUser: null, pwUser: null },
+  _state: { editProduct: null, orderFilter: 'all', selectedOrder: null, editUser: null, pwUser: null },
 
   // ════════════════════════════════
   //  注文管理
@@ -2082,65 +2136,13 @@ const AdminPages = {
       else UI.toast(res?.error || '削除に失敗しました', 'error');
     });
   },
-
-  // ════════════════════════════════
-  //  メッセージ
-  // ════════════════════════════════
-  async renderMessages() {
-    if (this._state.chatThread) return this._renderChat();
-
-    const threads = await API.getThreads();
-    if (!Array.isArray(threads) || threads.length === 0) return `<h2 class="page-title">メッセージ</h2>` + UI.empty('スレッドはありません', '💬');
-
-    let html = `<h2 class="page-title">メッセージ</h2>`;
-    threads.forEach(t => {
-      html += `<div class="thread-card" onclick="AdminPages._state.chatThread='${t.thread_id}';App.renderPage()">
-        <div class="thread-card__title">${t.title}</div>
-        <div class="thread-card__preview">${t.last_message || '...'}</div>
-        <div class="thread-card__time">${Fmt.dateTime(t.last_at)}</div>
-      </div>`;
-    });
-    return html;
-  },
-
-  async _renderChat() {
-    const threadId = this._state.chatThread;
-    const msgs = await API.getMessages(threadId);
-    const messages = Array.isArray(msgs) ? msgs : [];
-
-    let html = `<button class="btn btn--ghost btn--sm mb-1" onclick="AdminPages._state.chatThread=null;App.renderPage()">← スレッド一覧</button>`;
-    html += `<div class="chat-messages" id="chat-messages">`;
-    messages.forEach(m => {
-      html += `<div class="chat-msg ${m.is_mine ? 'chat-msg--mine' : ''}">
-        ${!m.is_mine ? `<div class="chat-msg__name">${m.sender_name}</div>` : ''}
-        <div class="chat-msg__bubble">${m.text}</div>
-        <div class="chat-msg__time">${Fmt.dateTime(m.created_at)}</div>
-      </div>`;
-    });
-    html += `</div>`;
-    html += `<div class="chat-input">
-      <input type="text" class="input" id="chat-text" placeholder="メッセージを入力" onkeydown="if(event.key==='Enter')AdminPages._sendMsg()">
-      <button class="btn btn--primary" onclick="AdminPages._sendMsg()">送信</button>
-    </div>`;
-    setTimeout(() => { const el = $('#chat-messages'); if (el) el.scrollTop = el.scrollHeight; }, 100);
-    return html;
-  },
-
-  async _sendMsg() {
-    const input = $('#chat-text');
-    const text = input?.value?.trim();
-    if (!text) return;
-    input.value = '';
-    await API.sendMessage({ threadId: this._state.chatThread, text });
-    App.renderPage();
-  },
 };
 // ═══════════════════════════════════════
 //  リーダー画面
 // ═══════════════════════════════════════
 
 const LeaderPages = {
-  _state: { chatThread: null },
+  _state: {},
 
   // ════════════════════════════════
   //  価格設定
@@ -2319,55 +2321,98 @@ const LeaderPages = {
   },
 
   // ════════════════════════════════
-  //  メッセージ
+  //  商品状況
   // ════════════════════════════════
-  async renderMessages() {
-    if (this._state.chatThread) return this._renderChat();
+  async renderStatus() {
+    const products = await API.getProducts();
+    const orders = await API.getOrders();
+    const returns = await API.getReturns();
+    const groupId = Auth.getGroupId();
+    const groupName = Auth.getGroupName();
+    const list = Array.isArray(products) ? products : [];
+    const orderList = Array.isArray(orders) ? orders : [];
+    const returnList = Array.isArray(returns) ? returns : [];
 
-    const threads = await API.getThreads();
-    if (!Array.isArray(threads) || threads.length === 0) return `<h2 class="page-title">メッセージ</h2>` + UI.empty('スレッドはありません', '💬');
+    let html = `<h2 class="page-title">商品状況</h2>
+      <div class="text-sm text-gray mb-1">${groupName}</div>`;
 
-    let html = `<h2 class="page-title">メッセージ</h2>`;
-    threads.forEach(t => {
-      html += `<div class="thread-card" onclick="LeaderPages._state.chatThread='${t.thread_id}';App.renderPage()">
-        <div class="thread-card__title">${t.title}</div>
-        <div class="thread-card__preview">${t.last_message || '...'}</div>
-        <div class="thread-card__time">${Fmt.dateTime(t.last_at)}</div>
+    if (list.length === 0) return html + UI.empty('商品がありません', '📊');
+
+    const active = list.filter(p => p.status === 'active');
+    const closed = list.filter(p => p.status === 'closed');
+
+    const renderProduct = (p) => {
+      const pOrders = orderList.filter(o => o.product_id === p.product_id);
+      const pReturns = returnList.filter(r => pOrders.some(o => o.order_id === r.order_id));
+
+      const totalOrdered = pOrders.reduce((s, o) => s + (o.qty || 0), 0);
+      const confirmed = pOrders.filter(o => o.status === 'confirmed');
+      const pendingPayment = pOrders.filter(o => o.status === 'pending_payment');
+      const pendingReceipt = pOrders.filter(o => o.status === 'pending_receipt');
+      const paidAmount = confirmed.reduce((s, o) => s + (o.total || 0), 0);
+
+      const pendingReturns = pReturns.filter(r => ['unprocessed', 'applied', 'processing'].includes(r.status));
+      const doneReturns = pReturns.filter(r => ['remitted', 'handed'].includes(r.status));
+
+      html += `<div class="status-card">
+        <div class="status-card__header">
+          <span class="font-bold">${p.name}</span>
+          ${UI.badge(Fmt.productStatus(p.status), Fmt.statusColor(p.status))}
+        </div>
+
+        <div class="status-section">
+          <div class="status-section__title">📦 在庫</div>
+          <div class="status-bar-wrap">
+            <div class="status-bar">
+              <div class="status-bar__fill" style="width:${p.total_qty > 0 ? (1 - p.remaining_qty / p.total_qty) * 100 : 0}%"></div>
+            </div>
+            <div class="status-bar__label">${p.remaining_qty} / ${p.total_qty} 残り</div>
+          </div>
+        </div>
+
+        <div class="status-section">
+          <div class="status-section__title">💰 入金状況</div>
+          <div class="status-chips">
+            <span class="status-chip status-chip--green">確定 ${confirmed.length}件 (${Fmt.yen(paidAmount)})</span>
+            ${pendingReceipt.length > 0 ? `<span class="status-chip status-chip--gold">明細確認 ${pendingReceipt.length}件</span>` : ''}
+            ${pendingPayment.length > 0 ? `<span class="status-chip status-chip--red">入金待ち ${pendingPayment.length}件</span>` : ''}
+          </div>
+        </div>
+
+        ${pOrders.length > 0 ? `
+        <div class="status-section">
+          <div class="status-section__title">👤 注文者</div>
+          <div class="status-users">
+            ${pOrders.map(o => `<div class="status-user-row">
+              <span>${o.user_name}</span>
+              <span>${Fmt.qty(o.qty)}</span>
+              <span>${Fmt.yen(o.total)}</span>
+              ${UI.badge(Fmt.orderStatus(o.status), Fmt.statusColor(o.status))}
+            </div>`).join('')}
+          </div>
+        </div>` : ''}
+
+        ${pReturns.length > 0 ? `
+        <div class="status-section">
+          <div class="status-section__title">↩️ お戻し</div>
+          <div class="status-chips">
+            ${pendingReturns.length > 0 ? `<span class="status-chip status-chip--red">未処理 ${pendingReturns.length}件</span>` : ''}
+            ${doneReturns.length > 0 ? `<span class="status-chip status-chip--green">処理済 ${doneReturns.length}件</span>` : ''}
+          </div>
+        </div>` : ''}
       </div>`;
-    });
+    };
+
+    if (active.length > 0) {
+      html += `<h3 class="section-title">販売中</h3>`;
+      active.forEach(renderProduct);
+    }
+    if (closed.length > 0) {
+      html += `<h3 class="section-title mt-2">締切済み</h3>`;
+      closed.forEach(renderProduct);
+    }
+
     return html;
-  },
-
-  async _renderChat() {
-    const threadId = this._state.chatThread;
-    const msgs = await API.getMessages(threadId);
-    const messages = Array.isArray(msgs) ? msgs : [];
-
-    let html = `<button class="btn btn--ghost btn--sm mb-1" onclick="LeaderPages._state.chatThread=null;App.renderPage()">← スレッド一覧</button>`;
-    html += `<div class="chat-messages" id="chat-messages">`;
-    messages.forEach(m => {
-      html += `<div class="chat-msg ${m.is_mine ? 'chat-msg--mine' : ''}">
-        ${!m.is_mine ? `<div class="chat-msg__name">${m.sender_name}</div>` : ''}
-        <div class="chat-msg__bubble">${m.text}</div>
-        <div class="chat-msg__time">${Fmt.dateTime(m.created_at)}</div>
-      </div>`;
-    });
-    html += `</div>`;
-    html += `<div class="chat-input">
-      <input type="text" class="input" id="chat-text" placeholder="メッセージを入力" onkeydown="if(event.key==='Enter')LeaderPages._sendMsg()">
-      <button class="btn btn--primary" onclick="LeaderPages._sendMsg()">送信</button>
-    </div>`;
-    setTimeout(() => { const el = $('#chat-messages'); if (el) el.scrollTop = el.scrollHeight; }, 100);
-    return html;
-  },
-
-  async _sendMsg() {
-    const input = $('#chat-text');
-    const text = input?.value?.trim();
-    if (!text) return;
-    input.value = '';
-    await API.sendMessage({ threadId: this._state.chatThread, text });
-    App.renderPage();
   },
 };
 // ═══════════════════════════════════════
@@ -2480,9 +2525,9 @@ const App = {
 
   _renderNav(role) {
     const tabs = {
-      user:   [{ id: 'top', icon: '🏠', label: 'TOP' }, { id: 'msg', icon: '💬', label: 'メッセージ' }, { id: 'mypage', icon: '👤', label: 'マイページ' }],
-      admin:  [{ id: 'dashboard', icon: '📊', label: 'ダッシュボード' }, { id: 'order', icon: '📋', label: '注文管理' }, { id: 'product', icon: '📦', label: '商品' }, { id: 'return', icon: '↩️', label: 'お戻し' }, { id: 'users', icon: '👥', label: 'ユーザー' }, { id: 'msg', icon: '💬', label: 'メッセージ' }],
-      leader: [{ id: 'price', icon: '💰', label: '価格設定' }, { id: 'order', icon: '📋', label: '注文確認' }, { id: 'return', icon: '↩️', label: 'お戻し' }, { id: 'msg', icon: '💬', label: 'メッセージ' }],
+      user:   [{ id: 'top', icon: '🏠', label: 'TOP' }, { id: 'status', icon: '📊', label: '商品状況' }, { id: 'mypage', icon: '👤', label: 'マイページ' }],
+      admin:  [{ id: 'dashboard', icon: '📊', label: 'ダッシュボード' }, { id: 'order', icon: '📋', label: '注文管理' }, { id: 'product', icon: '📦', label: '商品' }, { id: 'return', icon: '↩️', label: 'お戻し' }, { id: 'users', icon: '👥', label: 'ユーザー' }],
+      leader: [{ id: 'price', icon: '💰', label: '価格設定' }, { id: 'status', icon: '📊', label: '商品状況' }, { id: 'order', icon: '📋', label: '注文確認' }, { id: 'return', icon: '↩️', label: 'お戻し' }],
     };
     const items = tabs[role] || tabs.user;
     $('#app-nav').innerHTML = items.map(t =>
@@ -2526,7 +2571,7 @@ const App = {
           case 'detail': html = await UserPages.renderDetail(); break;
           case 'purchase': html = await UserPages.renderPurchase(); break;
           case 'return': html = await UserPages.renderReturn(); break;
-          case 'msg':    html = await UserPages.renderMessages(); break;
+          case 'status': html = await UserPages.renderStatus(); break;
           case 'mypage': html = await UserPages.renderMyPage(); break;
           default: html = UI.empty('ページが見つかりません');
         }
@@ -2540,15 +2585,14 @@ const App = {
           case 'return':    html = await AdminPages.renderReturns(); break;
           case 'users':     html = await AdminPages.renderUsers(); break;
           case 'user-edit': html = await AdminPages.renderUserEdit(); break;
-          case 'msg':       html = await AdminPages.renderMessages(); break;
           default: html = UI.empty('ページが見つかりません');
         }
       } else if (role === 'leader') {
         switch (pageId) {
           case 'price':  html = await LeaderPages.renderPricing(); break;
+          case 'status': html = await LeaderPages.renderStatus(); break;
           case 'order':  html = await LeaderPages.renderOrders(); break;
           case 'return': html = await LeaderPages.renderReturns(); break;
-          case 'msg':    html = await LeaderPages.renderMessages(); break;
           default: html = UI.empty('ページが見つかりません');
         }
       }
