@@ -1,2609 +1,1033 @@
-<!DOCTYPE html><html lang="ja"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"><meta name="theme-color" content="#1E40AF"><meta name="apple-mobile-web-app-capable" content="yes"><title>出資管理システム</title><style>
-/* ═══════════════════════════════════════════════════════════
-   出資管理システム v1.0 - Production Stylesheet
-   ─── PE/WE監修: パフォーマンス・アクセシビリティ・保守性 ───
-   ═══════════════════════════════════════════════════════════ */
+// ═══════════════════════════════════════════════════════════════
+//  出資管理システム v1.0 - Google Apps Script Backend
+//  ★ このファイルを Apps Script エディタに貼り付けてデプロイ
+// ═══════════════════════════════════════════════════════════════
 
-/* ── CSS Variables ── */
-:root {
-  --c-primary: #1E40AF;
-  --c-primary-light: #3B82F6;
-  --c-primary-pale: #EFF6FF;
-  --c-success: #059669;
-  --c-success-pale: #ECFDF5;
-  --c-warning: #D97706;
-  --c-warning-pale: #FFFBEB;
-  --c-danger: #DC2626;
-  --c-danger-pale: #FEF2F2;
-  --c-gray-50: #F9FAFB;
-  --c-gray-100: #F3F4F6;
-  --c-gray-200: #E5E7EB;
-  --c-gray-300: #D1D5DB;
-  --c-gray-400: #9CA3AF;
-  --c-gray-500: #6B7280;
-  --c-gray-600: #4B5563;
-  --c-gray-700: #374151;
-  --c-gray-800: #1F2937;
-  --c-gray-900: #111827;
-  --c-bg: #F8FAFC;
-  --c-card: #FFFFFF;
-  --radius: 12px;
-  --radius-sm: 8px;
-  --shadow: 0 1px 3px rgba(0,0,0,.06), 0 1px 2px rgba(0,0,0,.04);
-  --shadow-md: 0 4px 12px rgba(0,0,0,.08);
-  --font: 'Hiragino Sans', 'Hiragino Kaku Gothic ProN', 'Noto Sans JP', -apple-system, BlinkMacSystemFont, sans-serif;
-  --ease: cubic-bezier(.25,.8,.25,1);
-}
+// ─── 設定 ───────────────────────────────────────────────────
+const SPREADSHEET_ID = '1qu_ee_zMrvWTdDh7v09cTbwTsD_8vTHWW4EfuM6HKVo';
 
-/* ── Reset ── */
-*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-html { font-size: 16px; -webkit-text-size-adjust: 100%; }
-body { font-family: var(--font); background: var(--c-bg); color: var(--c-gray-900); line-height: 1.6; -webkit-font-smoothing: antialiased; }
-img { max-width: 100%; display: block; }
-button { font-family: inherit; cursor: pointer; border: none; background: none; }
-input, select, textarea { font-family: inherit; font-size: 16px; }
-a { color: var(--c-primary-light); text-decoration: none; }
-
-/* ── Typography ── */
-.text-xs { font-size: 11px; } .text-sm { font-size: 13px; } .text-lg { font-size: 18px; } .text-xl { font-size: 22px; } .text-2xl { font-size: 26px; } .text-3xl { font-size: 32px; }
-.font-bold { font-weight: 700; } .font-medium { font-weight: 500; }
-.text-gray { color: var(--c-gray-500); } .text-green { color: var(--c-success); } .text-red { color: var(--c-danger); } .text-blue { color: var(--c-primary); }
-.text-center { text-align: center; } .text-right { text-align: right; }
-
-/* ── Spacing ── */
-.mt-05 { margin-top: 4px; } .mt-1 { margin-top: 8px; } .mt-2 { margin-top: 16px; } .mt-3 { margin-top: 24px; }
-.mb-05 { margin-bottom: 4px; } .mb-1 { margin-bottom: 8px; } .mb-2 { margin-bottom: 16px; }
-
-/* ── Flexbox ── */
-.flex-between { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
-.flex-center { display: flex; justify-content: center; align-items: center; }
-
-/* ═══════════════════════════════════
-   App Layout
-   ═══════════════════════════════════ */
-
-.app-layout { display: flex; flex-direction: column; min-height: 100dvh; max-width: 480px; margin: 0 auto; background: var(--c-bg); }
-
-.app-header {
-  display: flex; justify-content: space-between; align-items: center;
-  padding: 12px 16px; background: var(--c-primary);
-  color: white; position: sticky; top: 0; z-index: 100;
-}
-.app-header__title { font-size: 16px; font-weight: 800; letter-spacing: .5px; }
-.app-header__user { font-size: 11px; opacity: .8; margin-left: 8px; }
-.app-header__left { display: flex; align-items: center; flex-wrap: wrap; }
-.app-header__logout { color: white; font-size: 18px; padding: 4px 8px; border-radius: 6px; transition: background .15s; }
-.app-header__logout:hover { background: rgba(255,255,255,.15); }
-
-.app-nav {
-  display: flex; background: white; border-bottom: 1px solid var(--c-gray-200);
-  position: sticky; top: 48px; z-index: 99;
-}
-.nav-tab {
-  flex: 1; display: flex; flex-direction: column; align-items: center;
-  padding: 8px 4px 6px; font-size: 10px; color: var(--c-gray-400);
-  transition: color .15s; position: relative;
-}
-.nav-tab__icon { font-size: 18px; margin-bottom: 2px; }
-.nav-tab__label { font-weight: 600; }
-.nav-tab--active { color: var(--c-primary); }
-.nav-tab--active::after {
-  content: ''; position: absolute; bottom: 0; left: 20%; right: 20%;
-  height: 2px; background: var(--c-primary); border-radius: 1px;
-}
-
-.app-main { flex: 1; position: relative; }
-.page-content { padding: 12px 16px 80px; }
-.page-title { font-size: 18px; font-weight: 800; margin-bottom: 12px; color: var(--c-gray-900); }
-
-/* ── Global Loading ── */
-.global-loading {
-  position: absolute; inset: 0; display: flex; justify-content: center;
-  padding-top: 40%; background: rgba(248,250,252,.7); z-index: 50;
-}
-.spinner {
-  width: 32px; height: 32px; border: 3px solid var(--c-gray-200);
-  border-top-color: var(--c-primary); border-radius: 50%;
-  animation: spin .6s linear infinite;
-}
-@keyframes spin { to { transform: rotate(360deg); } }
-
-/* ═══════════════════════════════════
-   Login
-   ═══════════════════════════════════ */
-
-.login-screen { min-height: 100dvh; display: flex; align-items: center; justify-content: center; padding: 16px; background: linear-gradient(135deg, #0F172A 0%, #1E3A5F 50%, #1E40AF 100%); }
-.login-card { width: 100%; max-width: 360px; background: white; border-radius: 16px; padding: 32px 24px; box-shadow: var(--shadow-md); }
-.login-logo { font-size: 24px; font-weight: 900; text-align: center; color: var(--c-gray-900); letter-spacing: 2px; }
-.login-subtitle { font-size: 10px; text-align: center; color: var(--c-gray-400); letter-spacing: 1px; margin-bottom: 24px; }
-.login-demo { margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--c-gray-200); }
-.demo-accounts { display: flex; flex-wrap: wrap; gap: 4px; }
-.demo-btn { font-size: 11px; padding: 4px 10px; background: var(--c-gray-100); border-radius: 6px; color: var(--c-gray-600); transition: all .15s; }
-.demo-btn:hover { background: var(--c-primary-pale); color: var(--c-primary); }
-
-/* ═══════════════════════════════════
-   Components
-   ═══════════════════════════════════ */
-
-/* ── Card ── */
-.card { background: var(--c-card); border-radius: var(--radius); padding: 14px 16px; margin-bottom: 10px; box-shadow: var(--shadow); border: 1px solid rgba(0,0,0,.03); }
-
-/* ── Buttons ── */
-.btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; padding: 10px 20px; border-radius: var(--radius-sm); font-size: 14px; font-weight: 700; transition: all .15s var(--ease); }
-.btn--primary { background: var(--c-primary); color: white; }
-.btn--primary:hover { background: #1E3A8A; }
-.btn--primary:active { transform: scale(.97); }
-.btn--primary:disabled { opacity: .5; cursor: not-allowed; }
-.btn--outline { border: 1.5px solid var(--c-primary); color: var(--c-primary); background: white; }
-.btn--outline:hover { background: var(--c-primary-pale); }
-.btn--ghost { color: var(--c-gray-500); font-weight: 600; padding: 6px 12px; }
-.btn--ghost:hover { color: var(--c-gray-900); background: var(--c-gray-100); border-radius: var(--radius-sm); }
-.btn--full { width: 100%; }
-.btn--sm { font-size: 12px; padding: 6px 14px; }
-.btn--xs { font-size: 11px; padding: 4px 10px; }
-.btn-group { display: flex; flex-direction: column; gap: 6px; }
-
-/* ── Form ── */
-.form-group { margin-bottom: 12px; }
-.form-label { display: block; font-size: 12px; font-weight: 700; color: var(--c-gray-600); margin-bottom: 4px; }
-.input { width: 100%; padding: 10px 12px; border: 1.5px solid var(--c-gray-200); border-radius: var(--radius-sm); font-size: 15px; background: white; transition: border-color .15s; }
-.input:focus { outline: none; border-color: var(--c-primary-light); box-shadow: 0 0 0 3px rgba(59,130,246,.1); }
-select.input { appearance: none; background: white url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath d='M6 8L1 3h10z' fill='%236B7280'/%3E%3C/svg%3E") no-repeat right 12px center; padding-right: 32px; }
-
-/* ── Badge ── */
-.badge { display: inline-block; padding: 2px 10px; border-radius: 12px; font-size: 10px; font-weight: 700; }
-.badge--success { background: var(--c-success-pale); color: var(--c-success); }
-.badge--warning { background: var(--c-warning-pale); color: var(--c-warning); }
-.badge--info { background: var(--c-primary-pale); color: var(--c-primary); }
-.badge--gray { background: var(--c-gray-100); color: var(--c-gray-500); }
-.badge--red { background: var(--c-danger-pale); color: var(--c-danger); }
-.badge--green { background: var(--c-success-pale); color: var(--c-success); }
-.badge--purple { background: #F3E8FF; color: #7C3AED; }
-.badge--gold { background: #FFFBEB; color: #B45309; }
-
-/* ── Stats ── */
-.stat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 12px; }
-.stat-card { background: white; border-radius: var(--radius); padding: 12px 14px; box-shadow: var(--shadow); border-left: 3px solid var(--c-gray-300); }
-.stat-card--blue { border-left-color: var(--c-primary-light); }
-.stat-card--green { border-left-color: var(--c-success); }
-.stat-card--purple { border-left-color: #7C3AED; }
-.stat-card--gold { border-left-color: #F59E0B; }
-.stat-card--red { border-left-color: var(--c-danger); }
-.stat-card__label { font-size: 11px; color: var(--c-gray-500); font-weight: 600; }
-.stat-card__value { font-size: 22px; font-weight: 800; color: var(--c-gray-900); margin-top: 2px; }
-.stat-card__sub { font-size: 10px; color: var(--c-gray-400); margin-top: 2px; }
-
-/* ── Table ── */
-.table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; margin-bottom: 12px; }
-.table { width: 100%; border-collapse: collapse; font-size: 13px; }
-.table th { text-align: left; padding: 8px 10px; background: var(--c-gray-50); color: var(--c-gray-500); font-weight: 700; font-size: 11px; border-bottom: 1px solid var(--c-gray-200); white-space: nowrap; }
-.table td { padding: 8px 10px; border-bottom: 1px solid var(--c-gray-100); vertical-align: middle; }
-.table--compact th, .table--compact td { padding: 6px 8px; font-size: 12px; }
-
-/* ── Confirm Row ── */
-.confirm-row { display: flex; justify-content: space-between; align-items: center; padding: 6px 0; font-size: 13px; }
-.confirm-row__label { color: var(--c-gray-500); }
-.confirm-row__value { font-weight: 600; color: var(--c-gray-900); text-align: right; }
-
-/* ── Divider ── */
-.divider { height: 1px; background: var(--c-gray-200); margin: 10px 0; }
-
-/* ── Empty State ── */
-.empty-state { text-align: center; padding: 40px 20px; }
-.empty-state__icon { font-size: 40px; margin-bottom: 8px; }
-.empty-state__text { color: var(--c-gray-400); font-size: 14px; }
-
-/* ── Skeleton ── */
-.skeleton { padding: 16px; }
-.skeleton__line { height: 14px; background: linear-gradient(90deg, var(--c-gray-100) 25%, var(--c-gray-200) 50%, var(--c-gray-100) 75%); background-size: 200% 100%; border-radius: 4px; margin-bottom: 12px; animation: shimmer 1.5s infinite; }
-.skeleton__line:nth-child(2) { width: 85%; } .skeleton__line:nth-child(3) { width: 70%; }
-@keyframes shimmer { 0% { background-position: -200% 0; } 100% { background-position: 200% 0; } }
-
-/* ── Step Indicator ── */
-.step-indicator { display: flex; align-items: center; justify-content: center; gap: 0; padding: 8px 0 16px; }
-.step-dot { width: 28px; height: 28px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 800; background: var(--c-gray-200); color: var(--c-gray-400); }
-.step-dot--active { background: var(--c-primary); color: white; }
-.step-dot--done { background: var(--c-success); color: white; font-size: 13px; }
-.step-line { width: 24px; height: 2px; background: var(--c-gray-200); }
-
-/* ── Toast ── */
-.toast {
-  position: fixed; bottom: 80px; left: 50%; transform: translateX(-50%) translateY(20px);
-  padding: 10px 20px; border-radius: 10px; background: var(--c-gray-800); color: white;
-  font-size: 13px; font-weight: 600; z-index: 999; opacity: 0;
-  transition: all .3s var(--ease); box-shadow: var(--shadow-md); white-space: nowrap;
-}
-.toast--show { opacity: 1; transform: translateX(-50%) translateY(0); }
-.toast--error { background: var(--c-danger); }
-
-/* ── Modal ── */
-.modal-overlay {
-  position: fixed; inset: 0; background: rgba(0,0,0,.3); z-index: 200;
-  display: flex; align-items: center; justify-content: center; padding: 16px;
-  opacity: 0; transition: opacity .2s;
-}
-.modal-overlay--show { opacity: 1; }
-.modal { background: white; border-radius: 16px; padding: 24px; max-width: 340px; width: 100%; box-shadow: 0 20px 60px rgba(0,0,0,.15); }
-.modal__body { font-size: 15px; line-height: 1.6; margin-bottom: 16px; }
-.modal__actions { display: flex; gap: 8px; }
-.modal__actions .btn { flex: 1; }
-
-/* ── Info/Success Box ── */
-.info-box { background: var(--c-primary-pale); border: 1px solid #BFDBFE; border-radius: var(--radius-sm); padding: 10px 14px; }
-.success-box { background: var(--c-success-pale); border: 1px solid #A7F3D0; border-radius: var(--radius-sm); padding: 10px 14px; font-size: 13px; font-weight: 600; color: var(--c-success); }
-
-/* ═══════════════════════════════════
-   Business Components
-   ═══════════════════════════════════ */
-
-/* ── Product Card ── */
-.product-card {
-  background: white; border-radius: var(--radius); padding: 14px 16px;
-  margin-bottom: 10px; box-shadow: var(--shadow); cursor: pointer;
-  border: 1px solid transparent; transition: all .15s var(--ease);
-}
-.product-card:hover { border-color: var(--c-primary-light); box-shadow: var(--shadow-md); }
-.product-card--closed { opacity: .5; cursor: default; }
-.product-card--closed:hover { border-color: transparent; box-shadow: var(--shadow); }
-.product-card__header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
-.product-card__name { font-size: 16px; font-weight: 800; }
-.product-card__body { display: flex; align-items: baseline; gap: 8px; }
-.product-card__price { font-size: 22px; font-weight: 900; color: var(--c-gray-900); }
-.product-card__unit { font-size: 12px; font-weight: 500; color: var(--c-gray-400); }
-.product-card__profit { font-size: 14px; font-weight: 800; color: var(--c-success); }
-.product-card__footer { display: flex; justify-content: space-between; margin-top: 8px; font-size: 11px; color: var(--c-gray-400); }
-
-/* ── Product Admin Card ── */
-.product-admin-card { background: white; border-radius: var(--radius); padding: 14px 16px; margin-bottom: 10px; box-shadow: var(--shadow); cursor: pointer; transition: all .15s; }
-.product-admin-card:hover { box-shadow: var(--shadow-md); }
-
-/* ── Quantity Selector ── */
-.qty-selector { display: flex; align-items: center; justify-content: center; gap: 12px; }
-.qty-btn { width: 44px; height: 44px; border-radius: 50%; background: var(--c-gray-100); font-size: 20px; font-weight: 700; display: flex; align-items: center; justify-content: center; transition: all .15s; }
-.qty-btn:hover { background: var(--c-primary-pale); color: var(--c-primary); }
-.qty-input { width: 70px; text-align: center; font-size: 22px; font-weight: 800; border: 2px solid var(--c-gray-200); border-radius: var(--radius-sm); padding: 6px; }
-.qty-input:focus { border-color: var(--c-primary-light); outline: none; }
-
-/* ── Section Title ── */
-.section-title { font-size: 14px; font-weight: 800; color: var(--c-gray-800); margin-bottom: 8px; }
-
-/* ── Balance Banner ── */
-.balance-banner {
-  background: linear-gradient(135deg, #065F46, #047857);
-  color: white; border-radius: var(--radius); padding: 16px;
-  margin-bottom: 12px; box-shadow: var(--shadow);
-}
-.balance-banner__amount { font-size: 28px; font-weight: 900; }
-.balance-banner__label { font-size: 11px; opacity: .8; margin-top: 4px; }
-
-/* ── Balance Status ── */
-.balance-status { background: var(--c-gray-50); border-radius: var(--radius-sm); padding: 8px 12px; }
-.balance-status__row { display: flex; justify-content: space-between; padding: 4px 0; font-size: 13px; }
-.balance-status__row--green { color: var(--c-success); }
-
-/* ── Amount Input ── */
-.amount-input-wrap { display: flex; align-items: center; gap: 4px; }
-.amount-prefix { font-size: 16px; font-weight: 700; color: var(--c-gray-500); }
-.input--amount { font-size: 20px; font-weight: 800; text-align: right; max-width: 180px; }
-.range-slider { width: 100%; margin: 6px 0; accent-color: var(--c-primary); height: 6px; }
-.range-labels { display: flex; justify-content: space-between; font-size: 10px; color: var(--c-gray-400); }
-
-/* ── Payment Breakdown ── */
-.payment-bar { display: flex; height: 10px; border-radius: 5px; overflow: hidden; }
-.payment-bar__seg { min-width: 4px; transition: width .3s; }
-.payment-bar__seg--green { background: var(--c-success); }
-.payment-bar__seg--blue { background: var(--c-primary-light); }
-
-.payment-split { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 8px; }
-.payment-split__item { padding: 10px; border-radius: var(--radius-sm); text-align: center; }
-.payment-split__item--green { background: var(--c-success-pale); color: var(--c-success); }
-.payment-split__item--blue { background: var(--c-primary-pale); color: var(--c-primary); }
-.payment-split__item--teal { background: #F0FDFA; color: #0D9488; }
-
-/* ── Reinvest Bar ── */
-.reinvest-bar { display: flex; height: 10px; border-radius: 5px; overflow: hidden; }
-.reinvest-bar__return { background: var(--c-success); min-width: 4px; transition: width .3s; }
-.reinvest-bar__keep { background: #0D9488; min-width: 4px; transition: width .3s; }
-
-/* ── Balance Deduct ── */
-.balance-deduct { display: flex; justify-content: space-between; background: var(--c-success-pale); padding: 8px 12px; border-radius: var(--radius-sm); font-size: 13px; color: var(--c-success); }
-
-/* ── Bank Info ── */
-.bank-info .confirm-row { border-bottom: 1px solid var(--c-gray-100); }
-.bank-info .confirm-row:last-child { border-bottom: none; }
-
-/* ── Choice Group ── */
-.choice-group { display: flex; flex-direction: column; gap: 8px; }
-.choice-btn {
-  width: 100%; text-align: left; padding: 14px 16px;
-  background: white; border: 2px solid var(--c-gray-200);
-  border-radius: var(--radius); transition: all .15s var(--ease);
-}
-.choice-btn:hover { border-color: var(--c-primary-light); background: var(--c-primary-pale); }
-.choice-btn__title { font-size: 15px; font-weight: 700; }
-.choice-btn__desc { font-size: 12px; color: var(--c-gray-500); margin-top: 2px; }
-
-/* ── Order Card ── */
-.order-card { background: white; border-radius: var(--radius); padding: 14px 16px; margin-bottom: 10px; box-shadow: var(--shadow); }
-.order-card__header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
-.order-card__name { font-weight: 700; }
-.order-card__actions { margin-top: 8px; display: flex; gap: 6px; }
-
-/* ── Thread Card ── */
-.thread-card {
-  background: white; border-radius: var(--radius); padding: 14px 16px;
-  margin-bottom: 8px; box-shadow: var(--shadow); cursor: pointer;
-  transition: all .15s var(--ease);
-}
-.thread-card:hover { box-shadow: var(--shadow-md); }
-.thread-card__title { font-size: 14px; font-weight: 700; }
-.thread-card__preview { font-size: 12px; color: var(--c-gray-500); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.thread-card__time { font-size: 10px; color: var(--c-gray-400); margin-top: 4px; }
-
-/* ── Chat ── */
-.chat-messages { max-height: 50vh; overflow-y: auto; padding: 8px 0; }
-.chat-msg { margin-bottom: 10px; max-width: 80%; }
-.chat-msg--mine { margin-left: auto; text-align: right; }
-.chat-msg__name { font-size: 10px; color: var(--c-gray-500); margin-bottom: 2px; }
-.chat-msg__bubble { display: inline-block; padding: 8px 14px; border-radius: 16px; font-size: 14px; line-height: 1.5; background: var(--c-gray-100); text-align: left; }
-.chat-msg--mine .chat-msg__bubble { background: var(--c-primary); color: white; }
-.chat-msg__time { font-size: 9px; color: var(--c-gray-400); margin-top: 2px; }
-.chat-input { display: flex; gap: 8px; padding: 8px 0; position: sticky; bottom: 0; background: var(--c-bg); }
-.chat-input .input { flex: 1; }
-
-/* ── User Card ── */
-.user-card { background: white; border-radius: var(--radius); padding: 12px 16px; margin-bottom: 8px; box-shadow: var(--shadow); cursor: pointer; transition: all .15s; }
-.user-card:hover { box-shadow: var(--shadow-md); }
-.user-card__meta { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 6px; font-size: 11px; color: var(--c-gray-400); }
-
-/* ── Filter Tabs ── */
-.filter-tabs { display: flex; gap: 4px; overflow-x: auto; -webkit-overflow-scrolling: touch; padding-bottom: 10px; margin-bottom: 10px; }
-.filter-tab { white-space: nowrap; padding: 6px 12px; border-radius: 20px; font-size: 11px; font-weight: 700; background: var(--c-gray-100); color: var(--c-gray-500); transition: all .15s; flex-shrink: 0; }
-.filter-tab--active { background: var(--c-primary); color: white; }
-
-/* ── Order Admin Card ── */
-.order-admin-card { background: white; border-radius: var(--radius); padding: 12px 16px; margin-bottom: 8px; box-shadow: var(--shadow); cursor: pointer; transition: all .15s; border-left: 3px solid var(--c-gray-200); }
-.order-admin-card:hover { box-shadow: var(--shadow-md); }
-.order-admin-card--action { border-left-color: var(--c-warning); }
-.order-admin-card__body { display: flex; justify-content: space-between; align-items: center; margin-top: 6px; }
-.order-admin-card__footer { display: flex; justify-content: space-between; align-items: center; margin-top: 4px; font-size: 11px; color: var(--c-gray-400); }
-.ml-05 { margin-left: 4px; }
-
-/* ── Order Progress ── */
-.order-progress { display: flex; align-items: center; justify-content: center; gap: 0; padding: 12px 0 16px; }
-.order-progress__step { display: flex; flex-direction: column; align-items: center; gap: 4px; }
-.order-progress__dot { width: 28px; height: 28px; border-radius: 50%; background: var(--c-gray-200); color: var(--c-gray-400); display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 800; }
-.order-progress__step--done .order-progress__dot { background: var(--c-success); color: white; }
-.order-progress__label { font-size: 10px; color: var(--c-gray-500); font-weight: 600; }
-.order-progress__step--done .order-progress__label { color: var(--c-success); }
-.order-progress__line { width: 40px; height: 2px; background: var(--c-gray-200); margin-bottom: 18px; }
-.order-progress__line--done { background: var(--c-success); }
-
-/* ── Receipt Info ── */
-.receipt-info { background: var(--c-gray-50); border-radius: var(--radius-sm); padding: 4px; }
-.receipt-link { display: flex; align-items: center; gap: 10px; padding: 12px 14px; background: white; border-radius: var(--radius-sm); text-decoration: none; color: var(--c-primary); font-weight: 700; font-size: 14px; transition: background .15s; }
-.receipt-link:hover { background: var(--c-primary-pale); }
-.receipt-link__icon { font-size: 20px; }
-.receipt-link__text { flex: 1; }
-.receipt-link__arrow { color: var(--c-gray-400); }
-
-/* ── Status Card ── */
-.status-card { background: white; border-radius: var(--radius); padding: 16px; margin-bottom: 12px; box-shadow: var(--shadow); }
-.status-card__header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
-.status-section { padding: 8px 0; border-top: 1px solid var(--c-gray-100); }
-.status-section__title { font-size: 12px; font-weight: 700; color: var(--c-gray-600); margin-bottom: 6px; }
-
-.status-bar-wrap { display: flex; align-items: center; gap: 10px; }
-.status-bar { flex: 1; height: 8px; background: var(--c-gray-100); border-radius: 4px; overflow: hidden; }
-.status-bar__fill { height: 100%; background: var(--c-primary); border-radius: 4px; transition: width .3s; }
-.status-bar__label { font-size: 11px; color: var(--c-gray-500); white-space: nowrap; }
-
-.status-chips { display: flex; flex-wrap: wrap; gap: 6px; }
-.status-chip { font-size: 11px; padding: 3px 8px; border-radius: 10px; font-weight: 700; }
-.status-chip--green { background: #ECFDF5; color: #059669; }
-.status-chip--red { background: #FEF2F2; color: #DC2626; }
-.status-chip--gold { background: #FFFBEB; color: #D97706; }
-
-.status-users { font-size: 12px; }
-.status-user-row { display: flex; align-items: center; gap: 8px; padding: 4px 0; border-bottom: 1px solid var(--c-gray-50); }
-.status-user-row:last-child { border-bottom: none; }
-.status-user-row span:first-child { flex: 1; }
-
-.status-my-order { padding: 6px 0; border-bottom: 1px solid var(--c-gray-50); }
-.status-my-order:last-child { border-bottom: none; }
-.text-gold { color: #D97706; }
-
-/* ── Schedule Grid ── */
-.schedule-hint { background: #FEF3C7; border: 1px solid #FDE68A; border-radius: var(--radius-sm); padding: 6px 10px; font-size: 11px; font-weight: 600; color: #92400E; margin-bottom: 8px; }
-.sch-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; }
-.sch-cell { border: 2px solid transparent; border-radius: 10px; padding: 8px 2px; text-align: center; transition: all .15s; background: var(--c-gray-100); position: relative; }
-.sch-cell--best { background: linear-gradient(135deg, #FFFBEB, #FEF3C7); border-color: #FDE68A; }
-.sch-cell--ok { background: white; border-color: var(--c-gray-200); }
-.sch-cell--few { background: var(--c-gray-50); border-color: var(--c-gray-200); opacity: .5; }
-.sch-cell--off { background: var(--c-gray-100); opacity: .3; border: 2px dashed var(--c-gray-300); }
-.sch-cell--sel { border-color: var(--c-primary) !important; background: var(--c-primary-pale) !important; box-shadow: 0 0 0 2px rgba(37,99,235,.15); opacity: 1 !important; }
-.sch-cell__star { font-size: 10px; line-height: 1; }
-.sch-cell__date { font-size: 12px; font-weight: 800; color: var(--c-gray-900); }
-.sch-cell__sub { font-size: 9px; color: var(--c-gray-500); }
-
-/* ═══════════════════════════════════
-   Responsive (tablet+)
-   ═══════════════════════════════════ */
-@media (min-width: 640px) {
-  .app-layout { box-shadow: 0 0 40px rgba(0,0,0,.08); border-radius: 16px; margin: 16px auto; min-height: calc(100dvh - 32px); overflow: hidden; }
-  .stat-grid { grid-template-columns: repeat(3, 1fr); }
-}
-
-/* ═══════════════════════════════════
-   Print
-   ═══════════════════════════════════ */
-@media print {
-  .app-header, .app-nav, .btn, .chat-input { display: none !important; }
-  .app-main { padding-top: 0; }
-  .card { box-shadow: none; border: 1px solid #ddd; break-inside: avoid; }
-}
-</style></head><body><div id="app"></div><script>
-// ═══════════════════════════════════════
-//  設定
-// ═══════════════════════════════════════
-
-const CONFIG = {
-  // ★ GASデプロイURL（デプロイ後にここを書き換え）
-  API_URL: 'https://script.google.com/macros/s/AKfycbzD5_qptnAccJnW8XzEgGxbW_7Rz1BT9SpzovLpxMzXEIL9emSGgag-1fZXtxgMFxmx1A/exec',
-
-  PAYMENT_DEADLINE_DAYS: 2,
-  CACHE_TTL_MS: 5 * 60 * 1000,
-  
-  // 振込先情報（実際の口座に書き換え）
-  BANK_INFO: {
-    bank: '○○銀行',
-    branch: '△△支店（000）',
-    type: '普通',
-    number: '1234567',
-    holder: 'カ）サンプル',
-  },
+const SH = {
+  config:       'config',
+  users:        'users',
+  products:     'products',
+  groups:       'groups',
+  group_prices: 'group_prices',
+  orders:       'orders',
+  returns:      'returns',
+  threads:      'threads',
+  messages:     'messages',
+  sessions:     'sessions',
+  schedule:     'schedule',
 };
-// ═══════════════════════════════════════
-//  DOM ユーティリティ
-// ═══════════════════════════════════════
-const $ = (sel) => document.querySelector(sel);
-const $$ = (sel) => [...document.querySelectorAll(sel)];
-function $el(tag, attrs = {}, children = []) {
-  const el = document.createElement(tag);
-  Object.entries(attrs).forEach(([k, v]) => {
-    if (k === 'className') el.className = v;
-    else if (k === 'textContent') el.textContent = v;
-    else if (k === 'innerHTML') el.innerHTML = v;
-    else if (k.startsWith('on')) el.addEventListener(k.slice(2).toLowerCase(), v);
-    else el.setAttribute(k, v);
+
+const SESSION_TTL_HOURS = 24;
+const PAYMENT_DEADLINE_DAYS = 2;
+
+// ═══════════════════════════════════════════════════════════════
+//  エントリーポイント
+// ═══════════════════════════════════════════════════════════════
+
+function doGet(e)  { return _handle(e); }
+function doPost(e) { return _handle(e); }
+
+function _handle(e) {
+  try {
+    const params = _parseParams(e);
+    const action = params.action || '';
+
+    // ── ログイン（トークン不要） ──
+    if (action === 'login') return _json(doLogin(params));
+
+    // ── 認証チェック ──
+    const session = validateSession(params.token);
+    if (!session) return _json({ success: false, error: 'ログインが必要です', code: 'AUTH_REQUIRED' });
+
+    const { userId, role, groupId } = session;
+
+    // ── ルーティング ──
+    let result;
+    switch (action) {
+      // 認証
+      case 'logout':           result = doLogout(params.token); break;
+      case 'me':               result = getMe(userId); break;
+      case 'updateProfile':    result = updateProfile(params, userId); break;
+
+      // 商品
+      case 'getProducts':      result = getProducts(role, groupId); break;
+      case 'getProduct':       result = getProduct(params.productId, role, groupId); break;
+      case 'createProduct':    result = requireRole('admin', role) || createProduct(params); break;
+      case 'updateProduct':    result = requireRole('admin', role) || updateProduct(params); break;
+
+      // グループ価格
+      case 'getGroupPrices':   result = getGroupPrices(params.productId, role, groupId); break;
+      case 'updateGroupPrice': result = requireRole(['admin','leader'], role) || updateGroupPrice(params, role, groupId); break;
+
+      // 注文
+      case 'getOrders':        result = getOrders(role, userId, groupId); break;
+      case 'createOrder':      result = requireRole('user', role) || createOrder(params, userId, groupId); break;
+      case 'updateOrder':      result = requireRole(['admin','leader'], role) || updateOrder(params); break;
+
+      // お戻し
+      case 'getReturns':       result = getReturns(role, userId, groupId); break;
+      case 'createReturn':     result = requireRole('user', role) || createReturn(params, userId); break;
+      case 'updateReturn':     result = requireRole(['admin','leader'], role) || updateReturn(params, userId); break;
+
+      // メッセージ
+      case 'getThreads':       result = getThreads(role, userId, groupId); break;
+      case 'getMessages':      result = getMessages(params.threadId, userId); break;
+      case 'sendMessage':      result = sendMessage(params, userId, role); break;
+
+      // 管理
+      case 'getDashboard':     result = requireRole('admin', role) || getDashboard(); break;
+      case 'getUsers':         result = getUsers(role, groupId); break;
+      case 'getGroups':        result = getGroups(); break;
+      case 'getSchedule':      result = getSchedule(); break;
+      case 'updateSchedule':   result = requireRole('admin', role) || updateSchedule(params); break;
+
+      // ユーザー管理
+      case 'createUser':       result = requireRole('admin', role) || createUser(params); break;
+      case 'updateUser':       result = requireRole('admin', role) || updateUser(params); break;
+      case 'resetPassword':    result = requireRole('admin', role) || resetPassword(params); break;
+      case 'deleteUser':       result = requireRole('admin', role) || deleteUser(params); break;
+
+      // ファイルアップロード
+      case 'uploadReceipt':    result = uploadReceipt(params, userId); break;
+
+      default: result = { success: false, error: 'Unknown action: ' + action };
+    }
+    return _json(result);
+  } catch (err) {
+    Logger.log('ERROR: ' + err.message + '\n' + err.stack);
+    return _json({ success: false, error: 'サーバーエラーが発生しました', detail: err.message });
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  ユーティリティ
+// ═══════════════════════════════════════════════════════════════
+
+function _parseParams(e) {
+  const params = { ...(e.parameter || {}) };
+  if (e.postData) {
+    try { Object.assign(params, JSON.parse(e.postData.contents)); } catch (_) {}
+  }
+  return params;
+}
+
+function _json(data) {
+  return ContentService.createTextOutput(JSON.stringify(data)).setMimeType(ContentService.MimeType.JSON);
+}
+
+function _ss() {
+  return SpreadsheetApp.openById(SPREADSHEET_ID);
+}
+
+function _sheet(name) {
+  return _ss().getSheetByName(name);
+}
+
+/** シートの全データをオブジェクト配列で返す */
+function _readAll(sheetName) {
+  const sheet = _sheet(sheetName);
+  if (!sheet) return [];
+  const data = sheet.getDataRange().getValues();
+  if (data.length < 2) return [];
+  const headers = data[0].map(h => String(h).trim());
+  return data.slice(1).filter(row => row[0] !== '').map(row => {
+    const obj = {};
+    headers.forEach((h, i) => { obj[h] = row[i]; });
+    return obj;
   });
-  children.forEach(c => { if (typeof c === 'string') el.appendChild(document.createTextNode(c)); else if (c) el.appendChild(c); });
-  return el;
 }
 
-// ═══════════════════════════════════════
-//  フォーマッター
-// ═══════════════════════════════════════
-const Fmt = {
-  /** 金額フォーマット: 1234567 → "¥1,234,567" */
-  yen(n) {
-    if (n === null || n === undefined || isNaN(n)) return '¥0';
-    return '¥' + Math.floor(Number(n)).toLocaleString('ja-JP');
-  },
+/** シートに1行追加 */
+function _appendRow(sheetName, obj) {
+  const sheet = _sheet(sheetName);
+  const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0].map(h => String(h).trim());
+  const row = headers.map(h => obj[h] !== undefined ? obj[h] : '');
+  sheet.appendRow(row);
+}
 
-  /** 数量: 50 → "50個" */
-  qty(n) { return Number(n).toLocaleString() + '個'; },
+/** 条件に合う行を更新 */
+function _updateRows(sheetName, matchFn, updateFn) {
+  const sheet = _sheet(sheetName);
+  const data = sheet.getDataRange().getValues();
+  if (data.length < 2) return 0;
+  const headers = data[0].map(h => String(h).trim());
+  let updated = 0;
+  for (let i = 1; i < data.length; i++) {
+    const obj = {};
+    headers.forEach((h, j) => { obj[h] = data[i][j]; });
+    if (matchFn(obj)) {
+      const newObj = updateFn({ ...obj });
+      const newRow = headers.map(h => newObj[h] !== undefined ? newObj[h] : '');
+      sheet.getRange(i + 1, 1, 1, newRow.length).setValues([newRow]);
+      updated++;
+    }
+  }
+  return updated;
+}
 
-  /** パーセント: 46.4 → "46.4%" */
-  pct(n) { return Number(n).toFixed(1) + '%'; },
+/** ユニークID生成 */
+function _genId(prefix) {
+  const ts = Date.now().toString(36);
+  const rand = Math.random().toString(36).substring(2, 6);
+  return prefix + '_' + ts + rand;
+}
 
-  /** 日付: ISO → "2/10" or "2026/2/10" */
-  date(s, full = false) {
-    if (!s) return '-';
-    const d = new Date(s);
-    if (isNaN(d)) return '-';
-    return full ? `${d.getFullYear()}/${d.getMonth() + 1}/${d.getDate()}` : `${d.getMonth() + 1}/${d.getDate()}`;
-  },
+/** 現在日時ISO文字列 */
+function _now() {
+  return new Date().toISOString();
+}
 
-  /** 日時: ISO → "2/10 14:30" */
-  dateTime(s) {
-    if (!s) return '-';
-    const d = new Date(s);
-    if (isNaN(d)) return '-';
-    return `${d.getMonth() + 1}/${d.getDate()} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
-  },
+/** サニタイズ: 文字列のみ許可、HTMLタグ除去 */
+function _sanitize(val) {
+  if (val === null || val === undefined) return '';
+  return String(val).replace(/<[^>]*>/g, '').trim();
+}
 
-  /** ステータスラベル */
-  orderStatus(s) {
-    const map = { pending_payment: '入金待ち', pending_receipt: '明細確認中', confirmed: '確定', cancelled: 'キャンセル' };
-    return map[s] || s;
-  },
-  returnStatus(s) {
-    const map = { unprocessed: '未処理', applied: '申請済', processing: '処理中', remitted: '送金済', handed: '手渡し済' };
-    return map[s] || s;
-  },
-  productStatus(s) {
-    const map = { draft: '下書き', active: '販売中', closed: '締切', completed: '完了' };
-    return map[s] || s;
-  },
-  statusColor(s) {
-    const map = {
-      pending_payment: 'warning', pending_receipt: 'info', confirmed: 'success', cancelled: 'gray',
-      unprocessed: 'warning', applied: 'info', processing: 'info', remitted: 'success', handed: 'success',
-      active: 'success', closed: 'gray', draft: 'warning',
+/** 数値変換 */
+function _num(val) {
+  const n = Number(val);
+  return isNaN(n) ? 0 : n;
+}
+
+/** ロールチェック（不合格ならエラーオブジェクトを返す） */
+function requireRole(allowed, actual) {
+  const arr = Array.isArray(allowed) ? allowed : [allowed];
+  if (arr.includes(actual)) return null; // OKの場合nullを返す
+  return { success: false, error: '権限がありません', code: 'FORBIDDEN' };
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  認証・セッション
+// ═══════════════════════════════════════════════════════════════
+
+function _sha256(text) {
+  const raw = Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, text, Utilities.Charset.UTF_8);
+  return raw.map(b => ('0' + ((b + 256) % 256).toString(16)).slice(-2)).join('');
+}
+
+function doLogin(params) {
+  const loginId = _sanitize(params.loginId);
+  const password = _sanitize(params.password);
+  if (!loginId || !password) return { success: false, error: 'IDとパスワードを入力してください' };
+
+  const users = _readAll(SH.users);
+  const user = users.find(u => String(u.login_id) === loginId);
+  if (!user) return { success: false, error: 'IDまたはパスワードが違います' };
+
+  // パスワード検証
+  const hash = _sha256(String(user.salt) + password);
+  if (hash !== String(user.password_hash)) return { success: false, error: 'IDまたはパスワードが違います' };
+
+  // セッション作成
+  const token = Utilities.getUuid();
+  const expires = new Date(Date.now() + SESSION_TTL_HOURS * 3600000).toISOString();
+  _appendRow(SH.sessions, { token, user_id: user.user_id, expires, created_at: _now() });
+
+  // ユーザー情報（パスワード以外）
+  const groups = _readAll(SH.groups);
+  const group = groups.find(g => g.group_id === user.group_id);
+  return {
+    success: true,
+    token,
+    user: {
+      user_id: user.user_id,
+      name: user.name,
+      role: user.role,
+      group_id: user.group_id,
+      group_name: group ? group.name : '',
+      is_repeater: user.is_repeater === true || user.is_repeater === 'TRUE',
+      reinvest_balance: _num(user.reinvest_balance),
+      bank_name: user.bank_name || '',
+      bank_branch: user.bank_branch || '',
+      bank_type: user.bank_type || '',
+      bank_number: user.bank_number || '',
+      bank_holder: user.bank_holder || '',
+    }
+  };
+}
+
+function doLogout(token) {
+  _updateRows(SH.sessions, s => s.token === token, s => { s.expires = '1970-01-01T00:00:00Z'; return s; });
+  return { success: true };
+}
+
+function validateSession(token) {
+  if (!token) return null;
+  const sessions = _readAll(SH.sessions);
+  const session = sessions.find(s => String(s.token) === String(token));
+  if (!session) return null;
+
+  const expires = new Date(session.expires);
+  if (expires < new Date()) return null;
+
+  const users = _readAll(SH.users);
+  const user = users.find(u => u.user_id === session.user_id);
+  if (!user) return null;
+
+  return {
+    userId: user.user_id,
+    role: user.role,
+    groupId: user.group_id || '',
+  };
+}
+
+function getMe(userId) {
+  const users = _readAll(SH.users);
+  const user = users.find(u => u.user_id === userId);
+  if (!user) return { success: false, error: 'ユーザーが見つかりません' };
+  const groups = _readAll(SH.groups);
+  const group = groups.find(g => g.group_id === user.group_id);
+  return {
+    success: true,
+    user: {
+      user_id: user.user_id,
+      name: user.name,
+      email: user.email || '',
+      role: user.role,
+      group_id: user.group_id,
+      group_name: group ? group.name : '',
+      is_repeater: user.is_repeater === true || user.is_repeater === 'TRUE',
+      reinvest_balance: _num(user.reinvest_balance),
+      bank_name: user.bank_name || '',
+      bank_branch: user.bank_branch || '',
+      bank_type: user.bank_type || '',
+      bank_number: user.bank_number || '',
+      bank_holder: user.bank_holder || '',
+    }
+  };
+}
+
+function updateProfile(params, userId) {
+  const fields = ['email', 'bank_name', 'bank_branch', 'bank_type', 'bank_number', 'bank_holder'];
+  const updated = _updateRows(SH.users, u => u.user_id === userId, u => {
+    fields.forEach(f => { if (params[f] !== undefined) u[f] = _sanitize(params[f]); });
+    return u;
+  });
+  if (updated === 0) return { success: false, error: '更新に失敗しました' };
+  return getMe(userId);
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  商品
+// ═══════════════════════════════════════════════════════════════
+
+function getProducts(role, groupId) {
+  const products = _readAll(SH.products);
+  const groupPrices = _readAll(SH.group_prices);
+
+  const result = products.map(p => {
+    const gp = groupPrices.find(g => g.product_id === p.product_id && g.group_id === groupId);
+    return {
+      product_id: p.product_id,
+      name: p.name,
+      buy_price: _num(p.buy_price),
+      base_sell_price: _num(p.sell_price),
+      total_qty: _num(p.total_qty),
+      remaining_qty: _num(p.remaining_qty),
+      deadline: p.deadline,
+      status: p.status,
+      sell_price: gp ? _num(gp.sell_price) : _num(p.sell_price),
+      profit_rate: gp ? _num(gp.profit_rate) : null,
+      created_at: p.created_at,
     };
-    return map[s] || 'gray';
-  },
-};
-// ═══════════════════════════════════════
-//  共通UIコンポーネント
-// ═══════════════════════════════════════
-
-const UI = {
-  /** カード */
-  card(content, cls = '') {
-    return `<div class="card ${cls}">${content}</div>`;
-  },
-
-  /** セクションタイトル */
-  section(title, subtitle = '') {
-    return `<h3 class="section-title">${title}</h3>${subtitle ? `<p class="text-sm text-gray">${subtitle}</p>` : ''}`;
-  },
-
-  /** ステータスバッジ */
-  badge(text, color = 'gray') {
-    return `<span class="badge badge--${color}">${text}</span>`;
-  },
-
-  /** 統計カード */
-  stat(label, value, sub = '', color = '') {
-    return `<div class="stat-card ${color ? 'stat-card--' + color : ''}">
-      <div class="stat-card__label">${label}</div>
-      <div class="stat-card__value">${value}</div>
-      ${sub ? `<div class="stat-card__sub">${sub}</div>` : ''}
-    </div>`;
-  },
-
-  /** 2列統計グリッド */
-  statGrid(items) {
-    return `<div class="stat-grid">${items.join('')}</div>`;
-  },
-
-  /** 空状態 */
-  empty(msg, icon = '📭') {
-    return `<div class="empty-state"><div class="empty-state__icon">${icon}</div><div class="empty-state__text">${msg}</div></div>`;
-  },
-
-  /** ローディングスケルトン */
-  skeleton(lines = 3) {
-    return `<div class="skeleton">${Array(lines).fill('<div class="skeleton__line"></div>').join('')}</div>`;
-  },
-
-  /** テーブル */
-  table(headers, rows, opts = {}) {
-    const ths = headers.map(h => typeof h === 'string' ? `<th>${h}</th>` : `<th class="${h.cls || ''}">${h.label}</th>`).join('');
-    const trs = rows.map(r => `<tr>${r.map((c, i) => `<td class="${headers[i]?.cls || ''}">${c}</td>`).join('')}</tr>`).join('');
-    return `<div class="table-wrap"><table class="table ${opts.compact ? 'table--compact' : ''}"><thead><tr>${ths}</tr></thead><tbody>${trs.length ? trs : `<tr><td colspan="${headers.length}" class="text-center text-gray">データがありません</td></tr>`}</tbody></table></div>`;
-  },
-
-  /** ステップインジケーター */
-  steps(current, total) {
-    return `<div class="step-indicator">${Array.from({ length: total }, (_, i) => {
-      const n = i + 1;
-      const cls = n < current ? 'step-dot--done' : n === current ? 'step-dot--active' : '';
-      const label = n < current ? '✓' : n;
-      return (i > 0 ? '<span class="step-line"></span>' : '') + `<span class="step-dot ${cls}">${label}</span>`;
-    }).join('')}</div>`;
-  },
-
-  /** 確認行 */
-  confirmRow(label, value, cls = '') {
-    return `<div class="confirm-row ${cls}"><span class="confirm-row__label">${label}</span><span class="confirm-row__value">${value}</span></div>`;
-  },
-
-  /** 区切り線 */
-  divider() { return '<div class="divider"></div>'; },
-
-  /** トースト通知 */
-  toast(msg, type = 'success') {
-    const icons = { success: '✅', error: '❌', info: 'ℹ️', warning: '⚠️' };
-    const el = document.createElement('div');
-    el.className = `toast toast--${type}`;
-    el.innerHTML = `${icons[type] || ''} ${msg}`;
-    document.body.appendChild(el);
-    requestAnimationFrame(() => el.classList.add('toast--show'));
-    setTimeout(() => { el.classList.remove('toast--show'); setTimeout(() => el.remove(), 300); }, 2500);
-  },
-
-  /** モーダル確認ダイアログ */
-  confirm(msg, onOk, onCancel = null) {
-    const overlay = document.createElement('div');
-    overlay.className = 'modal-overlay';
-    overlay.innerHTML = `
-      <div class="modal">
-        <div class="modal__body">${msg}</div>
-        <div class="modal__actions">
-          <button class="btn btn--ghost modal__cancel">キャンセル</button>
-          <button class="btn btn--primary modal__ok">OK</button>
-        </div>
-      </div>`;
-    document.body.appendChild(overlay);
-    requestAnimationFrame(() => overlay.classList.add('modal-overlay--show'));
-    overlay.querySelector('.modal__ok').onclick = () => { overlay.remove(); onOk(); };
-    overlay.querySelector('.modal__cancel').onclick = () => { overlay.remove(); onCancel?.(); };
-    overlay.addEventListener('click', (e) => { if (e.target === overlay) { overlay.remove(); onCancel?.(); } });
-  },
-
-  /** ページヘッダー（戻るボタン付き） */
-  pageHeader(title, backFn = null) {
-    return `${backFn ? `<button class="btn btn--ghost btn--sm mb-1" onclick="${backFn}">← 戻る</button>` : ''}<h2 class="page-title">${title}</h2>`;
-  },
-};
-// ═══════════════════════════════════════
-//  認証モジュール（本番対応）
-// ═══════════════════════════════════════
-
-const Auth = {
-  currentUser: null,
-  _token: null,
-
-  init() {
-    const saved = localStorage.getItem('auth_token');
-    const user = localStorage.getItem('auth_user');
-    if (saved && user) {
-      this._token = saved;
-      try { this.currentUser = JSON.parse(user); } catch (_) { this.clear(); }
-    }
-  },
-
-  isLoggedIn() { return !!this._token && !!this.currentUser; },
-  getToken()   { return this._token; },
-  getRole()    { return this.currentUser?.role || ''; },
-  getGroupId() { return this.currentUser?.group_id || ''; },
-  getUserId()  { return this.currentUser?.user_id || ''; },
-  getGroupName() { return this.currentUser?.group_name || ''; },
-
-  setSession(token, user) {
-    this._token = token;
-    this.currentUser = user;
-    localStorage.setItem('auth_token', token);
-    localStorage.setItem('auth_user', JSON.stringify(user));
-  },
-
-  clear() {
-    this._token = null;
-    this.currentUser = null;
-    localStorage.removeItem('auth_token');
-    localStorage.removeItem('auth_user');
-  },
-
-  /** ログイン後にユーザー情報を最新に更新 */
-  async refreshUser() {
-    if (!this._token) return;
-    const res = await API.call('me');
-    if (res?.success && res.user) {
-      this.currentUser = { ...this.currentUser, ...res.user };
-      localStorage.setItem('auth_user', JSON.stringify(this.currentUser));
-    }
-  },
-};
-// ═══════════════════════════════════════
-//  API通信モジュール（本番専用）
-// ═══════════════════════════════════════
-
-const API = {
-  _cache: new Map(),
-
-  /** GAS APIを呼び出す */
-  async call(action, params = {}) {
-    return this._fetch(action, params);
-  },
-
-  /** HTTPリクエスト */
-  async _fetch(action, params) {
-    const token = Auth.getToken();
-    const body = { ...params, action, token };
-
-    try {
-      App.setLoading(true);
-
-      const res = await fetch(CONFIG.API_URL, {
-        method: 'POST',
-        redirect: 'follow',
-        body: JSON.stringify(body),
-        headers: { 'Content-Type': 'text/plain' },
-      });
-
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = await res.json();
-
-      // セッション切れ
-      if (data.code === 'AUTH_REQUIRED') {
-        Auth.clear();
-        App.showLogin();
-        return data;
-      }
-      return data;
-    } catch (err) {
-      console.error('API Error:', err);
-      return { success: false, error: 'サーバーに接続できません。ネットワーク接続を確認してください。' };
-    } finally {
-      App.setLoading(false);
-    }
-  },
-
-  /** キャッシュ付き呼び出し */
-  async cachedCall(action, params = {}) {
-    const key = action + JSON.stringify(params);
-    const cached = this._cache.get(key);
-    if (cached && Date.now() - cached.time < CONFIG.CACHE_TTL_MS) return cached.data;
-    const data = await this.call(action, params);
-    this._cache.set(key, { data, time: Date.now() });
-    return data;
-  },
-
-  clearCache() { this._cache.clear(); },
-
-  // ── 便利メソッド ──
-  async login(loginId, password)     { return this.call('login', { loginId, password }); },
-  async logout()                     { return this.call('logout'); },
-  async getProducts()                { return this.cachedCall('getProducts'); },
-  async getProduct(productId)        { return this.call('getProduct', { productId }); },
-  async createProduct(data)          { this.clearCache(); return this.call('createProduct', data); },
-  async updateProduct(data)          { this.clearCache(); return this.call('updateProduct', data); },
-  async getGroupPrices(productId)    { return this.call('getGroupPrices', { productId }); },
-  async updateGroupPrice(data)       { return this.call('updateGroupPrice', data); },
-  async getOrders(filters = {})      { return this.call('getOrders', filters); },
-  async createOrder(data)            { this.clearCache(); return this.call('createOrder', data); },
-  async updateOrder(orderId, data)   { return this.call('updateOrder', { orderId, ...data }); },
-  async getReturns(filters = {})     { return this.call('getReturns', filters); },
-  async createReturn(data)           { this.clearCache(); return this.call('createReturn', data); },
-  async updateReturn(returnId, data) { return this.call('updateReturn', { returnId, ...data }); },
-  async getThreads()                 { return this.call('getThreads'); },
-  async getMessages(threadId)        { return this.call('getMessages', { threadId }); },
-  async sendMessage(data)            { return this.call('sendMessage', data); },
-  async getDashboard()               { return this.cachedCall('getDashboard'); },
-  async getUsers()                   { return this.call('getUsers'); },
-  async getGroups()                  { return this.cachedCall('getGroups'); },
-  async getSchedule()                { return this.cachedCall('getSchedule'); },
-  async createUser(data)             { this.clearCache(); return this.call('createUser', data); },
-  async updateUser(data)             { this.clearCache(); return this.call('updateUser', data); },
-  async resetPassword(userId, pw)    { return this.call('resetPassword', { user_id: userId, new_password: pw }); },
-  async deleteUser(userId)           { this.clearCache(); return this.call('deleteUser', { user_id: userId }); },
-  async uploadReceipt(data)          { return this.call('uploadReceipt', data); },
-};
-// ═══════════════════════════════════════
-//  ユーザー画面
-// ═══════════════════════════════════════
-
-const UserPages = {
-  // ── 状態管理 ──
-  _state: {},
-  _reset() {
-    this._state = { selectedProduct: null, purchaseStep: 0, purchaseQty: 1, balanceUsed: 0, returnStep: 0, returnOrder: null, returnAction: null, returnAmount: 0, returnMethod: null, returnDate: null };
-  },
-
-  // ════════════════════════════════
-  //  TOP画面
-  // ════════════════════════════════
-  async renderTop() {
-    const products = await API.getProducts();
-    const user = Auth.currentUser;
-    const balance = user?.reinvest_balance || 0;
-
-    let html = '';
-
-    // 残高カード
-    if (balance > 0) {
-      html += `<div class="balance-banner">
-        <div class="balance-banner__amount">${Fmt.yen(balance)}</div>
-        <div class="balance-banner__label">運用継続中の残高 — 商品購入時に充当できます</div>
-      </div>`;
-    }
-
-    // 商品一覧
-    const active = (Array.isArray(products) ? products : []).filter(p => p.status === 'active');
-    const closed = (Array.isArray(products) ? products : []).filter(p => p.status !== 'active');
-
-    if (active.length === 0 && closed.length === 0) {
-      html += UI.empty('販売中の商品はありません', '📦');
-    }
-
-    active.forEach(p => { html += this._productCard(p, true); });
-
-    if (closed.length > 0) {
-      html += `<div class="text-xs text-gray mt-2 mb-05">過去の商品</div>`;
-      closed.forEach(p => { html += this._productCard(p, false); });
-    }
-
-    return html;
-  },
-
-  _productCard(p, active) {
-    const profit = p.profit_rate ? `+${Fmt.pct(p.profit_rate)}` : '';
-    const remaining = p.remaining_qty > 0 ? `残り${p.remaining_qty}個` : '完売';
-    return `
-      <div class="product-card ${active ? '' : 'product-card--closed'}" onclick="${active ? `UserPages.goDetail('${p.product_id}')` : ''}">
-        <div class="product-card__header">
-          <div class="product-card__name">${p.name}</div>
-          ${UI.badge(Fmt.productStatus(p.status), Fmt.statusColor(p.status))}
-        </div>
-        <div class="product-card__body">
-          <div class="product-card__price">${Fmt.yen(p.sell_price || p.buy_price)}<span class="product-card__unit">/個</span></div>
-          ${profit ? `<div class="product-card__profit">${profit}</div>` : ''}
-        </div>
-        <div class="product-card__footer">
-          <span>${remaining}</span>
-          <span>〆 ${Fmt.date(p.deadline)}</span>
-        </div>
-      </div>`;
-  },
-
-  goDetail(productId) {
-    this._reset();
-    this._state.selectedProduct = productId;
-    App.currentPage = 'detail';
-    App.renderPage();
-  },
-
-  // ════════════════════════════════
-  //  商品詳細
-  // ════════════════════════════════
-  async renderDetail() {
-    const pid = this._state.selectedProduct;
-    if (!pid) return this.renderTop();
-    const p = await API.getProduct(pid);
-    if (!p || p.error) return UI.empty('商品が見つかりません');
-
-    const maxQty = Math.min(p.remaining_qty, 100);
-    const qty = this._state.purchaseQty;
-    const total = (p.sell_price || 0) * qty;
-    this._state._cachedPrice = p.sell_price || 0;
-
-    return `
-      <button class="btn btn--ghost btn--sm mb-1" onclick="App.navigate('top')">← 戻る</button>
-      ${UI.card(`
-        <h2 class="text-lg font-bold">${p.name}</h2>
-        <div class="product-meta mt-1">
-          ${UI.confirmRow('販売価格', Fmt.yen(p.sell_price))}
-          ${UI.confirmRow('仕入単価', Fmt.yen(p.buy_price))}
-          ${UI.confirmRow('利益率', Fmt.pct(p.profit_rate || 0))}
-          ${UI.confirmRow('残り在庫', Fmt.qty(p.remaining_qty))}
-          ${UI.confirmRow('締切', Fmt.date(p.deadline, true))}
-        </div>
-      `)}
-      ${p.remaining_qty > 0 ? UI.card(`
-        <h3 class="section-title">購入数量</h3>
-        <div class="qty-selector">
-          <button class="qty-btn" onclick="UserPages._setQty(${qty} - 1)">−</button>
-          <input type="number" class="qty-input" value="${qty}" min="1" max="${maxQty}" onchange="UserPages._setQty(Number(this.value))">
-          <button class="qty-btn" onclick="UserPages._setQty(${qty} + 1)">+</button>
-        </div>
-        <div class="text-center mt-1">
-          <div class="text-2xl font-bold qty-total-value">${Fmt.yen(total)}</div>
-          <div class="text-xs text-gray qty-total-sub">${Fmt.yen(p.sell_price)} × ${qty}個</div>
-        </div>
-        <button class="btn btn--primary btn--full mt-1" onclick="UserPages._startPurchase()">購入手続きへ →</button>
-      `) : UI.card(`<div class="text-center text-gray">この商品は完売しました</div>`)}`;
-  },
-
-  _setQty(n) {
-    this._state.purchaseQty = Math.max(1, Math.min(n, 100));
-    // DOM直接更新（API再取得なし）
-    const qtyInput = document.querySelector('.qty-input');
-    const totalEl = document.querySelector('.qty-total-value');
-    const subEl = document.querySelector('.qty-total-sub');
-    if (qtyInput) qtyInput.value = this._state.purchaseQty;
-    if (totalEl && this._state._cachedPrice) {
-      const total = this._state._cachedPrice * this._state.purchaseQty;
-      totalEl.textContent = Fmt.yen(total);
-      if (subEl) subEl.textContent = Fmt.yen(this._state._cachedPrice) + ' × ' + this._state.purchaseQty + '個';
-    }
-  },
-
-  _startPurchase() {
-    const balance = Auth.currentUser?.reinvest_balance || 0;
-    this._state.purchaseStep = balance > 0 ? 1 : 2;
-    this._state.balanceUsed = 0;
-    App.currentPage = 'purchase';
-    App.renderPage();
-  },
-
-  // ════════════════════════════════
-  //  購入フロー（4ステップ）
-  // ════════════════════════════════
-  async renderPurchase() {
-    const step = this._state.purchaseStep;
-    const pid = this._state.selectedProduct;
-    const p = await API.getProduct(pid);
-    if (!p) return UI.empty('商品情報取得エラー');
-
-    const qty = this._state.purchaseQty;
-    const total = (p.sell_price || 0) * qty;
-    const balance = Auth.currentUser?.reinvest_balance || 0;
-
-    if (step === 1) return this._purchaseStepBalance(p, total, balance);
-    if (step === 2) return this._purchaseStepConfirm(p, total, balance);
-    if (step === 3) return this._purchaseStepDone(p, total);
-    return this.renderDetail();
-  },
-
-  // Step 1: 残高充当
-  _purchaseStepBalance(p, total, balance) {
-    const used = this._state.balanceUsed;
-    const maxUse = Math.min(balance, total);
-    const transfer = total - used;
-    const balPct = total > 0 ? Math.round(used / total * 100) : 0;
-    const trPct = 100 - balPct;
-
-    return `
-      <button class="btn btn--ghost btn--sm mb-1" onclick="App.currentPage='detail';App.renderPage()">← 戻る</button>
-      ${UI.steps(1, 3)}
-      ${UI.card(`
-        <h3 class="section-title">残高を使いますか？</h3>
-        <div class="balance-status">
-          <div class="balance-status__row"><span>購入金額</span><span class="font-bold">${Fmt.yen(total)}</span></div>
-          <div class="balance-status__row balance-status__row--green"><span>利用可能残高</span><span class="font-bold">${Fmt.yen(balance)}</span></div>
-        </div>
-        <div class="form-group mt-1">
-          <label class="form-label">充当する金額</label>
-          <div class="amount-input-wrap">
-            <span class="amount-prefix">¥</span>
-            <input type="number" class="input input--amount" value="${used}" min="0" max="${maxUse}" step="1000" onchange="UserPages._setBalance(Number(this.value))">
-          </div>
-          <input type="range" class="range-slider" min="0" max="${maxUse}" step="1000" value="${used}" oninput="UserPages._setBalance(Number(this.value))">
-          <div class="range-labels"><span>¥0</span><span>${Fmt.yen(maxUse)}</span></div>
-          <button class="btn btn--outline btn--sm mt-05" onclick="UserPages._setBalance(${maxUse})">残高を全額使う</button>
-        </div>
-        ${used > 0 ? `
-        <div class="payment-bar mt-1">
-          <div class="payment-bar__seg payment-bar__seg--green" style="width:${balPct}%"></div>
-          <div class="payment-bar__seg payment-bar__seg--blue" style="width:${trPct}%"></div>
-        </div>
-        <div class="payment-split">
-          <div class="payment-split__item payment-split__item--green"><div class="text-xs">残高充当</div><div class="font-bold">${Fmt.yen(used)}</div></div>
-          <div class="payment-split__item payment-split__item--blue"><div class="text-xs">銀行振込</div><div class="font-bold">${Fmt.yen(transfer)}</div></div>
-        </div>` : ''}
-        <div class="btn-group mt-1">
-          <button class="btn btn--primary btn--full" onclick="UserPages._state.purchaseStep=2;App.renderPage()">確認画面へ →</button>
-          <button class="btn btn--ghost btn--full" onclick="UserPages._state.balanceUsed=0;UserPages._state.purchaseStep=2;App.renderPage()">残高を使わずに購入</button>
-        </div>
-      `)}`;
-  },
-
-  _setBalance(n) {
-    const balance = Auth.currentUser?.reinvest_balance || 0;
-    this._state.balanceUsed = Math.max(0, Math.min(n, balance));
-    App.renderPage({ soft: true });
-  },
-
-  // Step 2: 最終確認
-  _purchaseStepConfirm(p, total, balance) {
-    const used = this._state.balanceUsed;
-    const transfer = total - used;
-    const qty = this._state.purchaseQty;
-    const prevStep = balance > 0 ? 1 : 0;
-
-    return `
-      <button class="btn btn--ghost btn--sm mb-1" onclick="UserPages._state.purchaseStep=${prevStep || 0};${prevStep ? "App.renderPage()" : "App.currentPage='detail';App.renderPage()"}">← 戻る</button>
-      ${UI.steps(2, 3)}
-      ${UI.card(`
-        <h3 class="section-title">注文内容の確認</h3>
-        ${UI.confirmRow('商品', p.name)}
-        ${UI.confirmRow('数量', Fmt.qty(qty))}
-        ${UI.confirmRow('単価', Fmt.yen(p.sell_price))}
-        ${UI.divider()}
-        ${UI.confirmRow('合計金額', Fmt.yen(total), 'font-bold')}
-        ${used > 0 ? `
-          ${UI.confirmRow('💰 残高充当', '− ' + Fmt.yen(used), 'text-green')}
-          ${UI.confirmRow('🏦 銀行振込額', Fmt.yen(transfer), 'font-bold text-lg')}
-          <div class="text-xs text-gray mt-05">充当後の残高: ${Fmt.yen(balance - used)}</div>
-        ` : ''}
-        ${transfer > 0 ? `
-          <div class="info-box mt-1">
-            <div class="text-sm font-bold mb-05">お支払い手順</div>
-            <div class="text-xs">① 予約確定 → ② 銀行振込（${Fmt.yen(transfer)}）→ ③ 明細アップロード → ④ 確認</div>
-          </div>
-        ` : `
-          <div class="success-box mt-1">✅ 残高のみで購入完了 — 振込は不要です</div>
-        `}
-        <button class="btn btn--primary btn--full mt-1" onclick="UserPages._confirmPurchase()">
-          ${transfer > 0 ? `予約を確定する（振込額: ${Fmt.yen(transfer)}）` : '購入を確定する（残高払い）'}
-        </button>
-      `)}`;
-  },
-
-  async _confirmPurchase() {
-    const pid = this._state.selectedProduct;
-    const qty = this._state.purchaseQty;
-    const balanceUsed = this._state.balanceUsed;
-
-    const res = await API.createOrder({ productId: pid, qty, balanceUsed });
-    if (res?.success) {
-      this._state.purchaseStep = 3;
-      this._state._lastOrder = res.order;
-      // ユーザー情報更新
-      if (balanceUsed > 0) {
-        Auth.currentUser.reinvest_balance = Math.max(0, (Auth.currentUser.reinvest_balance || 0) - balanceUsed);
-        localStorage.setItem('auth_user', JSON.stringify(Auth.currentUser));
-      }
-      App.renderPage();
-    } else {
-      UI.toast(res?.error || '注文に失敗しました', 'error');
-    }
-  },
-
-  // Step 3: 完了
-  _purchaseStepDone(p, total) {
-    const order = this._state._lastOrder;
-    if (!order) return UI.empty('注文情報が見つかりません');
-    const balUsed = order.balance_used || 0;
-    const transfer = order.transfer_amount || 0;
-    const remainBal = Auth.currentUser?.reinvest_balance || 0;
-
-    let html = `${UI.steps(3, 3)}`;
-
-    html += UI.card(`
-      <div class="text-center">
-        <div class="text-3xl mb-05">${transfer > 0 ? '📋' : '✅'}</div>
-        <h2 class="text-lg font-bold">${transfer > 0 ? '予約が完了しました' : '購入が完了しました'}</h2>
-      </div>
-      ${balUsed > 0 ? `
-        <div class="balance-deduct mt-1">
-          <span>残高から充当</span><span class="font-bold">−${Fmt.yen(balUsed)}</span>
-        </div>
-        <div class="text-xs text-gray text-right">残高: ${Fmt.yen(remainBal)}</div>
-      ` : ''}
-    `);
-
-    if (transfer > 0) {
-      const bank = CONFIG.BANK_INFO;
-      html += UI.card(`
-        <h3 class="section-title">🏦 振込先</h3>
-        <div class="bank-info">
-          ${UI.confirmRow('振込額', Fmt.yen(transfer), 'font-bold text-lg')}
-          ${UI.confirmRow('銀行', bank.bank)}
-          ${UI.confirmRow('支店', bank.branch)}
-          ${UI.confirmRow('種類', bank.type)}
-          ${UI.confirmRow('口座番号', bank.number)}
-          ${UI.confirmRow('名義', bank.holder)}
-        </div>
-        <div class="info-box mt-1">
-          <div class="text-xs">振込後、マイページから明細をアップロードしてください</div>
-        </div>
-      `);
-    } else {
-      html += UI.card(`<div class="success-box">✅ 残高のみで購入完了しました。振込は不要です。</div>`);
-    }
-
-    html += `<button class="btn btn--primary btn--full mt-1" onclick="App.navigate('top')">TOPに戻る</button>`;
-    return html;
-  },
-
-  // ════════════════════════════════
-  //  お戻しフロー
-  // ════════════════════════════════
-  goReturn(orderId) {
-    this._reset();
-    this._state.returnOrder = orderId;
-    this._state.returnStep = 1;
-    App.currentPage = 'return';
-    App.renderPage();
-  },
-
-  async renderReturn() {
-    const step = this._state.returnStep;
-    if (step === 1) return this._returnStep1();
-    if (step === 2) return this._returnStep2();
-    if (step === 3) return this._returnStep3();
-    if (step === 4) return this._returnStep4();
-    if (step === 5) return this._returnStep5();
-    return UI.empty('不明なステップ');
-  },
-
-  // Step 1: 全額 or 一部
-  async _returnStep1() {
-    const orders = await API.getOrders();
-    const order = (Array.isArray(orders) ? orders : []).find(o => o.order_id === this._state.returnOrder && o.status === 'confirmed');
-    if (!order) return UI.card('お戻し対象の注文が見つかりません') + `<button class="btn btn--ghost btn--full mt-1" onclick="App.navigate('mypage')">マイページへ</button>`;
-
-    const product = await API.getProduct(order.product_id);
-    const profitRate = product ? (order.unit_price - product.buy_price) / product.buy_price : 0.35;
-    const profit = Math.round(order.total * profitRate);
-    const totalAmount = order.total + profit;
-    this._state._totalAmount = totalAmount;
-    this._state._profit = profit;
-    this._state._orderTotal = order.total;
-    this._state._productName = product?.name || order.product_name || '';
-
-    return `
-      <button class="btn btn--ghost btn--sm mb-1" onclick="App.navigate('mypage')">← 戻る</button>
-      ${UI.steps(1, 4)}
-      ${UI.card(`
-        <h3 class="section-title">Step 1: お戻し方法</h3>
-        <div class="text-sm text-gray mb-1">${this._state._productName} (${Fmt.qty(order.qty)})</div>
-        ${UI.confirmRow('元本', Fmt.yen(order.total))}
-        ${UI.confirmRow('利益', '+' + Fmt.yen(profit))}
-        ${UI.divider()}
-        ${UI.confirmRow('お戻し総額', Fmt.yen(totalAmount), 'font-bold')}
-        <div class="choice-group mt-1">
-          <button class="choice-btn" onclick="UserPages._state.returnAction='full';UserPages._state.returnAmount=${totalAmount};UserPages._state.returnStep=3;App.renderPage()">
-            <div class="choice-btn__title">全額を受け取る</div>
-            <div class="choice-btn__desc">${Fmt.yen(totalAmount)} を全額受取</div>
-          </button>
-          <button class="choice-btn" onclick="UserPages._state.returnAction='partial';UserPages._state.returnStep=2;App.renderPage()">
-            <div class="choice-btn__title">一部を受け取る</div>
-            <div class="choice-btn__desc">受取額を指定、残りは運用継続</div>
-          </button>
-        </div>
-      `)}`;
-  },
-
-  // Step 2: 一部受取額入力
-  _returnStep2() {
-    const totalAmount = this._state._totalAmount;
-    const amt = this._state.returnAmount || Math.round(totalAmount / 2);
-    const keep = totalAmount - amt;
-    const pct = Math.round(amt / totalAmount * 100);
-
-    return `
-      <button class="btn btn--ghost btn--sm mb-1" onclick="UserPages._state.returnStep=1;App.renderPage()">← 戻る</button>
-      ${UI.steps(2, 4)}
-      ${UI.card(`
-        <h3 class="section-title">Step 2: 受取額を入力</h3>
-        <div class="text-sm text-gray mb-1">お戻し総額: ${Fmt.yen(totalAmount)}</div>
-        <div class="form-group">
-          <label class="form-label">受け取る金額</label>
-          <div class="amount-input-wrap">
-            <span class="amount-prefix">¥</span>
-            <input type="number" class="input input--amount" value="${amt}" min="1" max="${totalAmount}" step="10000" onchange="UserPages._state.returnAmount=Math.max(1,Math.min(Number(this.value),${totalAmount}));App.renderPage()">
-          </div>
-          <input type="range" class="range-slider" min="1" max="${totalAmount}" step="10000" value="${amt}" oninput="UserPages._state.returnAmount=Number(this.value);App.renderPage()">
-          <div class="range-labels"><span>¥1</span><span>${Fmt.yen(totalAmount)}</span></div>
-        </div>
-        <div class="reinvest-bar">
-          <div class="reinvest-bar__return" style="width:${pct}%"></div>
-          <div class="reinvest-bar__keep" style="width:${100 - pct}%"></div>
-        </div>
-        <div class="payment-split">
-          <div class="payment-split__item payment-split__item--green"><div class="text-xs">受取額</div><div class="font-bold">${Fmt.yen(amt)}</div></div>
-          <div class="payment-split__item payment-split__item--teal"><div class="text-xs">運用継続</div><div class="font-bold">${Fmt.yen(keep)}</div></div>
-        </div>
-        <button class="btn btn--primary btn--full mt-1" onclick="UserPages._state.returnAmount=${amt};UserPages._state.returnStep=3;App.renderPage()">受取方法の選択へ →</button>
-      `)}`;
-  },
-
-  // Step 3: 受取方法
-  _returnStep3() {
-    const amt = this._state.returnAmount;
-    return `
-      <button class="btn btn--ghost btn--sm mb-1" onclick="UserPages._state.returnStep=${this._state.returnAction === 'partial' ? 2 : 1};App.renderPage()">← 戻る</button>
-      ${UI.steps(3, 4)}
-      ${UI.card(`
-        <h3 class="section-title">Step 3: 受取方法</h3>
-        <div class="text-sm text-gray mb-1">受取額: ${Fmt.yen(amt)}</div>
-        <div class="choice-group">
-          <button class="choice-btn" onclick="UserPages._state.returnMethod='transfer';UserPages._state.returnStep=4;App.renderPage()">
-            <div class="choice-btn__title">🏦 銀行振込</div>
-            <div class="choice-btn__desc">登録口座に振り込み</div>
-          </button>
-          <button class="choice-btn" onclick="UserPages._state.returnMethod='cash';UserPages._state.returnStep=4;App.renderPage()">
-            <div class="choice-btn__title">💵 現金手渡し</div>
-            <div class="choice-btn__desc">日程を選んで対面受取</div>
-          </button>
-        </div>
-      `)}`;
-  },
-
-  // Step 4: 日程選択（現金の場合）+最終確認
-  _returnStep4() {
-    const isCash = this._state.returnMethod === 'cash';
-    const isPartial = this._state.returnAction === 'partial';
-    const amt = this._state.returnAmount;
-    const keep = (this._state._totalAmount || 0) - amt;
-
-    // 日程データ
-    const dates = [];
-    const base = new Date('2026-03-04');
-    const ranks = [2, 3, 1, 0, 0, 3, 2];
-    const dayNames = ['日','月','火','水','木','金','土'];
-    for (let i = 0; i < 7; i++) {
-      const d = new Date(base); d.setDate(d.getDate() + i);
-      dates.push({ date: d, rank: ranks[i], label: `${d.getMonth() + 1}/${d.getDate()}`, day: dayNames[d.getDay()] });
-    }
-    if (!this._state.returnDate && isCash) {
-      const best = dates.find(d => d.rank === 3);
-      if (best) this._state.returnDate = best.label;
-    }
-
-    let html = `
-      <button class="btn btn--ghost btn--sm mb-1" onclick="UserPages._state.returnStep=3;App.renderPage()">← 戻る</button>
-      ${UI.steps(4, 4)}`;
-
-    html += UI.card(`
-      <h3 class="section-title">Step 4: ${isCash ? '日程を選んで確認' : '最終確認'}</h3>
-      ${isCash ? `
-        <div class="schedule-hint">💡 ⭐の日に合わせるとスムーズにお渡しできます</div>
-        <div class="sch-grid">
-          ${dates.map(d => {
-            if (d.rank === 0) return `<div class="sch-cell sch-cell--off"><div class="sch-cell__date">${d.label}</div><div class="sch-cell__sub">${d.day}</div></div>`;
-            const selected = this._state.returnDate === d.label;
-            const cls = d.rank === 3 ? 'sch-cell--best' : d.rank === 2 ? 'sch-cell--ok' : 'sch-cell--few';
-            return `<button class="sch-cell ${cls} ${selected ? 'sch-cell--sel' : ''}" onclick="UserPages._state.returnDate='${d.label}';App.renderPage()">
-              ${d.rank === 3 ? '<div class="sch-cell__star">⭐</div>' : ''}
-              <div class="sch-cell__date">${d.label}</div>
-              <div class="sch-cell__sub">${d.day}</div>
-            </button>`;
-          }).join('')}
-        </div>
-        ${UI.divider()}
-      ` : ''}
-      <div class="mt-05">
-        ${UI.confirmRow('商品', this._state._productName)}
-        ${UI.confirmRow('お戻し方法', this._state.returnAction === 'full' ? '全額受取' : '一部受取')}
-        ${UI.confirmRow('受取額', Fmt.yen(amt), 'font-bold')}
-        ${isPartial ? UI.confirmRow('運用継続', Fmt.yen(keep)) : ''}
-        ${UI.confirmRow('受取方法', isCash ? '現金手渡し' : '銀行振込')}
-        ${isCash ? UI.confirmRow('希望日', this._state.returnDate || '未選択') : ''}
-      </div>
-      <button class="btn btn--primary btn--full mt-1" onclick="UserPages._submitReturn()">お戻し申請を確定する</button>
-    `);
-
-    return html;
-  },
-
-  async _submitReturn() {
-    const data = {
-      orderId: this._state.returnOrder,
-      return_action: this._state.returnAction,
-      returnAmount: this._state.returnAmount,
-      method: this._state.returnMethod,
-      desiredDate: this._state.returnDate || '',
+  });
+  return result;
+}
+
+function getProduct(productId, role, groupId) {
+  const products = _readAll(SH.products);
+  const p = products.find(x => x.product_id === productId);
+  if (!p) return { success: false, error: '商品が見つかりません' };
+
+  const gp = _readAll(SH.group_prices).find(g => g.product_id === productId && g.group_id === groupId);
+  return {
+    ...p,
+    buy_price: _num(p.buy_price),
+    base_sell_price: _num(p.sell_price),
+    sell_price: gp ? _num(gp.sell_price) : _num(p.sell_price),
+    total_qty: _num(p.total_qty),
+    remaining_qty: _num(p.remaining_qty),
+    profit_rate: gp ? _num(gp.profit_rate) : null,
+  };
+}
+
+function createProduct(params) {
+  const id = _genId('P');
+  const buyPrice = _num(params.buy_price);
+  const sellPrice = _num(params.sell_price) || buyPrice;
+  const product = {
+    product_id: id,
+    name: _sanitize(params.name),
+    buy_price: buyPrice,
+    sell_price: sellPrice,
+    total_qty: _num(params.total_qty),
+    remaining_qty: _num(params.total_qty),
+    deadline: _sanitize(params.deadline),
+    status: 'draft',
+    created_at: _now(),
+    updated_at: _now(),
+  };
+  _appendRow(SH.products, product);
+
+  // 全グループに管理者の売単価を初期値として設定
+  const groups = _readAll(SH.groups);
+  const profitRate = buyPrice > 0 ? Math.round((sellPrice - buyPrice) / buyPrice * 1000) / 10 : 0;
+  groups.forEach(g => {
+    _appendRow(SH.group_prices, {
+      product_id: id,
+      group_id: g.group_id,
+      sell_price: sellPrice,
+      profit_rate: profitRate,
+      updated_at: _now(),
+    });
+  });
+
+  return { success: true, product };
+}
+
+function updateProduct(params) {
+  const updated = _updateRows(SH.products, p => p.product_id === params.productId, p => {
+    if (params.name !== undefined) p.name = _sanitize(params.name);
+    if (params.sell_price !== undefined) p.sell_price = _num(params.sell_price);
+    if (params.buy_price !== undefined) p.buy_price = _num(params.buy_price);
+    if (params.status !== undefined) p.status = _sanitize(params.status);
+    if (params.deadline !== undefined) p.deadline = _sanitize(params.deadline);
+    if (params.remaining_qty !== undefined) p.remaining_qty = _num(params.remaining_qty);
+    if (params.total_qty !== undefined) p.total_qty = _num(params.total_qty);
+    p.updated_at = _now();
+    return p;
+  });
+  return updated > 0 ? { success: true } : { success: false, error: '商品が見つかりません' };
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  グループ価格
+// ═══════════════════════════════════════════════════════════════
+
+function getGroupPrices(productId, role, groupId) {
+  const prices = _readAll(SH.group_prices).filter(g => g.product_id === productId);
+  if (role === 'leader') return prices.filter(g => g.group_id === groupId);
+  return prices;
+}
+
+function updateGroupPrice(params, role, groupId) {
+  if (role === 'leader' && params.groupId !== groupId) {
+    return { success: false, error: '他グループの価格は変更できません' };
+  }
+  const product = _readAll(SH.products).find(p => p.product_id === params.productId);
+  if (!product) return { success: false, error: '商品が見つかりません' };
+
+  const sellPrice = _num(params.sell_price);
+  const buyPrice = _num(product.buy_price);
+  const profitRate = buyPrice > 0 ? Math.round((sellPrice - buyPrice) / buyPrice * 1000) / 10 : 0;
+
+  const updated = _updateRows(SH.group_prices,
+    g => g.product_id === params.productId && g.group_id === params.groupId,
+    g => { g.sell_price = sellPrice; g.profit_rate = profitRate; g.updated_at = _now(); return g; }
+  );
+
+  if (updated === 0) {
+    _appendRow(SH.group_prices, {
+      product_id: params.productId,
+      group_id: params.groupId,
+      sell_price: sellPrice,
+      profit_rate: profitRate,
+      updated_at: _now(),
+    });
+  }
+  return { success: true };
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  注文
+// ═══════════════════════════════════════════════════════════════
+
+function getOrders(role, userId, groupId) {
+  let orders = _readAll(SH.orders);
+  if (role === 'user') orders = orders.filter(o => o.user_id === userId);
+  else if (role === 'leader') {
+    const groupUsers = _readAll(SH.users).filter(u => u.group_id === groupId).map(u => u.user_id);
+    orders = orders.filter(o => groupUsers.includes(o.user_id));
+  }
+  // ユーザー名・商品名をJOIN
+  const users = _readAll(SH.users);
+  const products = _readAll(SH.products);
+  return orders.map(o => ({
+    ...o,
+    total: _num(o.total),
+    qty: _num(o.qty),
+    unit_price: _num(o.unit_price),
+    balance_used: _num(o.balance_used),
+    transfer_amount: _num(o.transfer_amount),
+    user_name: (users.find(u => u.user_id === o.user_id) || {}).name || '',
+    product_name: (products.find(p => p.product_id === o.product_id) || {}).name || '',
+    group_id: (users.find(u => u.user_id === o.user_id) || {}).group_id || '',
+  }));
+}
+
+function createOrder(params, userId, groupId) {
+  const products = _readAll(SH.products);
+  const p = products.find(x => x.product_id === params.productId);
+  if (!p) return { success: false, error: '商品が見つかりません' };
+
+  const qty = _num(params.qty);
+  if (qty <= 0) return { success: false, error: '数量を入力してください' };
+  if (_num(p.remaining_qty) < qty) return { success: false, error: '在庫が不足しています（残り: ' + p.remaining_qty + '個）' };
+
+  const gp = _readAll(SH.group_prices).find(g => g.product_id === params.productId && g.group_id === groupId);
+  if (!gp) return { success: false, error: 'グループ価格が設定されていません' };
+
+  const unitPrice = _num(gp.sell_price);
+  const total = unitPrice * qty;
+
+  // 残高充当
+  const user = _readAll(SH.users).find(u => u.user_id === userId);
+  const balance = _num(user.reinvest_balance);
+  const balanceUsed = Math.min(Math.max(_num(params.balanceUsed), 0), Math.min(balance, total));
+  const transferAmount = total - balanceUsed;
+
+  const orderId = _genId('ORD');
+  const now = _now();
+  const deadline = transferAmount > 0 ? new Date(Date.now() + PAYMENT_DEADLINE_DAYS * 86400000).toISOString() : '';
+
+  const order = {
+    order_id: orderId,
+    user_id: userId,
+    product_id: params.productId,
+    qty: qty,
+    unit_price: unitPrice,
+    total: total,
+    balance_used: balanceUsed,
+    transfer_amount: transferAmount,
+    status: transferAmount > 0 ? 'pending_payment' : 'confirmed',
+    receipt_url: '',
+    payment_deadline: deadline,
+    created_at: now,
+    updated_at: now,
+  };
+
+  _appendRow(SH.orders, order);
+
+  // 在庫減算
+  _updateRows(SH.products, x => x.product_id === params.productId, x => {
+    x.remaining_qty = _num(x.remaining_qty) - qty;
+    x.updated_at = now;
+    return x;
+  });
+
+  // 残高減算
+  if (balanceUsed > 0) {
+    _updateRows(SH.users, u => u.user_id === userId, u => {
+      u.reinvest_balance = _num(u.reinvest_balance) - balanceUsed;
+      return u;
+    });
+  }
+
+  return { success: true, order };
+}
+
+function updateOrder(params) {
+  const updated = _updateRows(SH.orders, o => o.order_id === params.orderId, o => {
+    if (params.status) o.status = _sanitize(params.status);
+    if (params.receipt_url) o.receipt_url = _sanitize(params.receipt_url);
+    o.updated_at = _now();
+    return o;
+  });
+  return updated > 0 ? { success: true } : { success: false, error: '注文が見つかりません' };
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  お戻し
+// ═══════════════════════════════════════════════════════════════
+
+function getReturns(role, userId, groupId) {
+  let returns = _readAll(SH.returns);
+  if (role === 'user') returns = returns.filter(r => r.user_id === userId);
+  else if (role === 'leader') {
+    const groupUsers = _readAll(SH.users).filter(u => u.group_id === groupId).map(u => u.user_id);
+    returns = returns.filter(r => groupUsers.includes(r.user_id));
+  }
+  const users = _readAll(SH.users);
+  const products = _readAll(SH.products);
+  const orders = _readAll(SH.orders);
+  return returns.map(r => {
+    const order = orders.find(o => o.order_id === r.order_id);
+    return {
+      ...r,
+      return_amount: _num(r.return_amount),
+      keep_amount: _num(r.keep_amount),
+      total_amount: _num(r.total_amount),
+      user_name: (users.find(u => u.user_id === r.user_id) || {}).name || '',
+      product_name: order ? (products.find(p => p.product_id === order.product_id) || {}).name || '' : '',
     };
-    const res = await API.createReturn(data);
-    if (res?.success) {
-      // 運用継続分があればユーザー残高更新
-      if (res.returnData?.keep_amount > 0) {
-        Auth.currentUser.reinvest_balance = (Auth.currentUser.reinvest_balance || 0) + res.returnData.keep_amount;
-        localStorage.setItem('auth_user', JSON.stringify(Auth.currentUser));
-      }
-      this._state.returnStep = 5;
-      this._state._returnResult = res.returnData;
-      App.renderPage();
-    } else {
-      UI.toast(res?.error || '申請に失敗しました', 'error');
-    }
-  },
+  });
+}
 
-  // Step 5: 完了
-  _returnStep5() {
-    const ret = this._state._returnResult;
-    return `
-      ${UI.card(`
-        <div class="text-center">
-          <div class="text-3xl mb-05">✅</div>
-          <h2 class="text-lg font-bold">お戻し申請が完了しました</h2>
-        </div>
-        <div class="mt-1">
-          ${UI.confirmRow('受取額', Fmt.yen(ret?.return_amount))}
-          ${ret?.keep_amount > 0 ? UI.confirmRow('運用継続', Fmt.yen(ret.keep_amount)) : ''}
-          ${UI.confirmRow('受取方法', ret?.method === 'cash' ? '現金手渡し' : '銀行振込')}
-          ${ret?.desired_date ? UI.confirmRow('希望日', ret.desired_date) : ''}
-        </div>
-        <div class="info-box mt-1"><div class="text-xs">処理状況は「商品状況」タブで確認できます</div></div>
-      `)}
-      <button class="btn btn--primary btn--full mt-1" onclick="App.navigate('mypage')">マイページへ</button>`;
-  },
+function createReturn(params, userId) {
+  const orders = _readAll(SH.orders);
+  const order = orders.find(o => o.order_id === params.orderId && o.user_id === userId && o.status === 'confirmed');
+  if (!order) return { success: false, error: 'お戻し対象の注文が見つかりません' };
 
-  // ════════════════════════════════
-  //  商品状況（ユーザー向け）
-  // ════════════════════════════════
-  async renderStatus() {
-    const products = await API.getProducts();
-    const orders = await API.getOrders();
-    const returns = await API.getReturns();
-    const list = Array.isArray(products) ? products : [];
-    const myOrders = Array.isArray(orders) ? orders : [];
-    const myReturns = Array.isArray(returns) ? returns : [];
+  // 既存お戻しチェック
+  const existing = _readAll(SH.returns).find(r => r.order_id === params.orderId);
+  if (existing) return { success: false, error: 'この注文は既にお戻し申請済みです' };
 
-    let html = `<h2 class="page-title">商品状況</h2>`;
+  const action = params.return_action === 'partial' ? 'partial' : 'full';
+  const orderTotal = _num(order.total);
+  const product = _readAll(SH.products).find(p => p.product_id === order.product_id);
+  const buyPrice = product ? _num(product.buy_price) : 0;
+  const profitRate = buyPrice > 0 ? (_num(order.unit_price) - buyPrice) / buyPrice : 0.35;
+  const profit = Math.round(orderTotal * profitRate);
+  const totalAmount = orderTotal + profit; // 元本+利益
 
-    if (list.length === 0) return html + UI.empty('商品がありません', '📊');
+  let returnAmount, keepAmount;
+  if (action === 'full') {
+    returnAmount = totalAmount;
+    keepAmount = 0;
+  } else {
+    returnAmount = Math.max(1, Math.min(_num(params.returnAmount), totalAmount));
+    keepAmount = totalAmount - returnAmount;
+  }
 
-    const active = list.filter(p => p.status === 'active');
-    const closed = list.filter(p => p.status === 'closed');
+  const returnId = _genId('RET');
+  const now = _now();
+  const ret = {
+    return_id: returnId,
+    order_id: params.orderId,
+    user_id: userId,
+    action: action,
+    total_amount: totalAmount,
+    return_amount: returnAmount,
+    keep_amount: keepAmount,
+    method: params.method === 'cash' ? 'cash' : 'transfer',
+    desired_date: _sanitize(params.desiredDate || ''),
+    status: 'unprocessed',
+    created_at: now,
+    processed_at: '',
+    processed_by: '',
+  };
+  _appendRow(SH.returns, ret);
 
-    const renderProduct = (p) => {
-      const pOrders = myOrders.filter(o => o.product_id === p.product_id);
-      const pReturns = myReturns.filter(r => pOrders.some(o => o.order_id === r.order_id));
+  // 運用継続分を残高に加算
+  if (keepAmount > 0) {
+    _updateRows(SH.users, u => u.user_id === userId, u => {
+      u.reinvest_balance = _num(u.reinvest_balance) + keepAmount;
+      return u;
+    });
+  }
 
-      html += `<div class="status-card">
-        <div class="status-card__header">
-          <span class="font-bold">${p.name}</span>
-          ${UI.badge(Fmt.productStatus(p.status), Fmt.statusColor(p.status))}
-        </div>
+  return { success: true, returnData: ret };
+}
 
-        <div class="status-section">
-          <div class="status-section__title">📦 在庫</div>
-          <div class="status-bar-wrap">
-            <div class="status-bar">
-              <div class="status-bar__fill" style="width:${p.total_qty > 0 ? (1 - p.remaining_qty / p.total_qty) * 100 : 0}%"></div>
-            </div>
-            <div class="status-bar__label">${p.remaining_qty} / ${p.total_qty} 残り</div>
-          </div>
-        </div>
+function updateReturn(params, processedBy) {
+  const updated = _updateRows(SH.returns, r => r.return_id === params.returnId, r => {
+    if (params.status) r.status = _sanitize(params.status);
+    r.processed_at = _now();
+    r.processed_by = processedBy;
+    return r;
+  });
+  return updated > 0 ? { success: true } : { success: false, error: 'お戻しが見つかりません' };
+}
 
-        ${pOrders.length > 0 ? `
-        <div class="status-section">
-          <div class="status-section__title">🛒 あなたの注文</div>
-          ${pOrders.map(o => `<div class="status-my-order">
-            <div class="flex-between">
-              <span>${Fmt.qty(o.qty)} / ${Fmt.yen(o.total)}</span>
-              ${UI.badge(Fmt.orderStatus(o.status), Fmt.statusColor(o.status))}
-            </div>
-            ${o.status === 'pending_payment' ? '<div class="text-xs text-red mt-05">振込・明細アップロードをお願いします</div>' : ''}
-            ${o.status === 'pending_receipt' ? '<div class="text-xs text-gold mt-05">管理者が明細を確認中です</div>' : ''}
-            ${o.status === 'confirmed' ? '<div class="text-xs text-green mt-05">入金確認済み</div>' : ''}
-          </div>`).join('')}
-        </div>` : `
-        <div class="status-section">
-          <div class="text-xs text-gray">まだ注文していません</div>
-        </div>`}
+// ═══════════════════════════════════════════════════════════════
+//  メッセージ
+// ═══════════════════════════════════════════════════════════════
 
-        ${pReturns.length > 0 ? `
-        <div class="status-section">
-          <div class="status-section__title">↩️ お戻し</div>
-          ${pReturns.map(r => `<div class="status-my-order">
-            <div class="flex-between">
-              <span>受取: ${Fmt.yen(r.return_amount)}</span>
-              ${UI.badge(Fmt.returnStatus(r.status), Fmt.statusColor(r.status))}
-            </div>
-          </div>`).join('')}
-        </div>` : ''}
-      </div>`;
+function getThreads(role, userId, groupId) {
+  let threads = _readAll(SH.threads);
+  if (role === 'user') {
+    threads = threads.filter(t => String(t.participants).includes(userId));
+  } else if (role === 'leader') {
+    const groupUsers = _readAll(SH.users).filter(u => u.group_id === groupId).map(u => u.user_id);
+    threads = threads.filter(t => groupUsers.some(uid => String(t.participants).includes(uid)));
+  }
+  const messages = _readAll(SH.messages);
+  return threads.map(t => {
+    const threadMsgs = messages.filter(m => m.thread_id === t.thread_id);
+    const last = threadMsgs.sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)))[0];
+    return {
+      ...t,
+      last_message: last ? last.text : '',
+      last_at: last ? last.created_at : t.created_at,
+      unread: 0,
     };
+  }).sort((a, b) => String(b.last_at).localeCompare(String(a.last_at)));
+}
 
-    if (active.length > 0) {
-      html += `<h3 class="section-title">販売中</h3>`;
-      active.forEach(renderProduct);
+function getMessages(threadId, userId) {
+  const thread = _readAll(SH.threads).find(t => t.thread_id === threadId);
+  if (!thread) return { success: false, error: 'スレッドが見つかりません' };
+  const messages = _readAll(SH.messages).filter(m => m.thread_id === threadId);
+  const users = _readAll(SH.users);
+  return messages.map(m => ({
+    ...m,
+    sender_name: (users.find(u => u.user_id === m.sender_id) || {}).name || '不明',
+    is_mine: m.sender_id === userId,
+  })).sort((a, b) => String(a.created_at).localeCompare(String(b.created_at)));
+}
+
+function sendMessage(params, userId, role) {
+  const threadId = _sanitize(params.threadId);
+  const text = _sanitize(params.text);
+  if (!text) return { success: false, error: 'メッセージを入力してください' };
+
+  const msgId = _genId('MSG');
+  _appendRow(SH.messages, {
+    message_id: msgId,
+    thread_id: threadId,
+    sender_id: userId,
+    text: text,
+    created_at: _now(),
+  });
+
+  // スレッドのupdated_atを更新
+  _updateRows(SH.threads, t => t.thread_id === threadId, t => { t.updated_at = _now(); return t; });
+
+  return { success: true, messageId: msgId };
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  ダッシュボード・ユーザー・グループ・日程
+// ═══════════════════════════════════════════════════════════════
+
+function getDashboard() {
+  const orders = _readAll(SH.orders);
+  const returns = _readAll(SH.returns);
+  const products = _readAll(SH.products);
+  const users = _readAll(SH.users).filter(u => u.role === 'user');
+
+  const confirmed = orders.filter(o => o.status === 'confirmed');
+  const totalSales = confirmed.reduce((s, o) => s + _num(o.total), 0);
+  const pendingReturns = returns.filter(r => ['unprocessed', 'applied'].includes(r.status));
+
+  return {
+    success: true,
+    dashboard: {
+      total_users: users.length,
+      total_products: products.length,
+      active_products: products.filter(p => p.status === 'active').length,
+      total_orders: orders.length,
+      confirmed_orders: confirmed.length,
+      pending_orders: orders.filter(o => ['pending_payment', 'pending_receipt'].includes(o.status)).length,
+      total_sales: totalSales,
+      pending_returns: pendingReturns.length,
+      total_return_amount: pendingReturns.reduce((s, r) => s + _num(r.return_amount), 0),
     }
-    if (closed.length > 0) {
-      html += `<h3 class="section-title mt-2">締切済み</h3>`;
-      closed.forEach(renderProduct);
-    }
+  };
+}
 
-    return html;
-  },
+function getUsers(role, groupId) {
+  let users = _readAll(SH.users);
+  if (role === 'leader') users = users.filter(u => u.group_id === groupId);
+  const groups = _readAll(SH.groups);
+  return users.map(u => ({
+    user_id: u.user_id,
+    name: u.name,
+    email: u.email,
+    group_id: u.group_id,
+    group_name: (groups.find(g => g.group_id === u.group_id) || {}).name || '',
+    role: u.role,
+    is_repeater: u.is_repeater === true || u.is_repeater === 'TRUE',
+    reinvest_balance: _num(u.reinvest_balance),
+  }));
+}
 
-  // ════════════════════════════════
-  //  マイページ
-  // ════════════════════════════════
-  async renderMyPage() {
-    const user = Auth.currentUser;
-    const orders = await API.getOrders();
-    const returns = await API.getReturns();
-    const myOrders = Array.isArray(orders) ? orders : [];
-    const myReturns = Array.isArray(returns) ? returns : [];
-    const balance = user?.reinvest_balance || 0;
+function getGroups() {
+  return _readAll(SH.groups);
+}
 
-    let html = `<h2 class="page-title">マイページ</h2>`;
+function getSchedule() {
+  return _readAll(SH.schedule).map(s => ({
+    date: s.date,
+    rank: _num(s.rank),
+    label: s.label || '',
+  }));
+}
 
-    // プロフィール
-    html += UI.card(`
-      ${UI.confirmRow('名前', user.name)}
-      ${UI.confirmRow('グループ', user.group_name || '-')}
-      ${UI.confirmRow('リピーター', user.is_repeater ? '✅ はい' : 'いいえ')}
-    `);
+function updateSchedule(params) {
+  // params.schedules: [{date, rank, label}, ...]
+  const schedules = params.schedules || [];
+  const sheet = _sheet(SH.schedule);
+  // 全消し＋再書き込み
+  if (sheet.getLastRow() > 1) sheet.deleteRows(2, sheet.getLastRow() - 1);
+  schedules.forEach(s => {
+    _appendRow(SH.schedule, { date: s.date, rank: _num(s.rank), label: _sanitize(s.label) });
+  });
+  return { success: true };
+}
 
-    // 残高
-    if (balance > 0) {
-      html += `<div class="balance-banner">
-        <div class="balance-banner__amount">${Fmt.yen(balance)}</div>
-        <div class="balance-banner__label">運用継続中の残高 — 次回の商品購入時に充当できます</div>
-      </div>`;
+// ═══════════════════════════════════════════════════════════════
+//  ファイルアップロード
+// ═══════════════════════════════════════════════════════════════
+
+function uploadReceipt(params, userId) {
+  const orderId = _sanitize(params.orderId);
+  const fileName = _sanitize(params.fileName) || 'receipt.jpg';
+  const base64Data = params.base64Data;
+  const mimeType = params.mimeType || 'image/jpeg';
+
+  if (!orderId) return { success: false, error: '注文IDが必要です' };
+  if (!base64Data) return { success: false, error: 'ファイルデータがありません' };
+
+  // 注文が自分のものか確認
+  const orders = _readAll(SH.orders);
+  const order = orders.find(o => o.order_id === orderId && o.user_id === userId);
+  if (!order) return { success: false, error: '注文が見つかりません' };
+
+  try {
+    // Google Driveに保存
+    const blob = Utilities.newBlob(Utilities.base64Decode(base64Data), mimeType, fileName);
+    
+    // 「出資管理_明細」フォルダを取得or作成
+    let folder;
+    const folders = DriveApp.getFoldersByName('出資管理_明細');
+    if (folders.hasNext()) {
+      folder = folders.next();
     } else {
-      html += UI.card(`
-        <div class="text-sm text-gray">運用中残高: ${Fmt.yen(0)}</div>
-        <div class="text-xs text-gray mt-05">お戻し時に「一部を受け取る」を選ぶと、残りがここに貯まります</div>
-      `);
+      folder = DriveApp.createFolder('出資管理_明細');
     }
 
-    // 注文履歴
-    html += `<h3 class="section-title mt-2">注文履歴</h3>`;
-    if (myOrders.length === 0) {
-      html += UI.card('<div class="text-sm text-gray text-center">注文はありません</div>');
-    } else {
-      myOrders.forEach(o => {
-        const canReturn = o.status === 'confirmed' && !myReturns.find(r => r.order_id === o.order_id);
-        const needUpload = ['pending_payment', 'pending_receipt'].includes(o.status);
-        html += `<div class="order-card">
-          <div class="order-card__header">
-            <span class="order-card__name">${o.product_name}</span>
-            ${UI.badge(Fmt.orderStatus(o.status), Fmt.statusColor(o.status))}
-          </div>
-          <div class="order-card__body">
-            ${UI.confirmRow('数量', Fmt.qty(o.qty))}
-            ${UI.confirmRow('合計', Fmt.yen(o.total))}
-            ${o.balance_used > 0 ? UI.confirmRow('残高充当', Fmt.yen(o.balance_used)) : ''}
-            ${o.transfer_amount > 0 ? UI.confirmRow('振込額', Fmt.yen(o.transfer_amount)) : ''}
-            ${UI.confirmRow('注文日', Fmt.date(o.created_at))}
-          </div>
-          <div class="order-card__actions">
-            ${canReturn ? `<button class="btn btn--outline btn--sm" onclick="UserPages.goReturn('${o.order_id}')">お戻し申請</button>` : ''}
-            ${needUpload && !o.receipt_url ? `<button class="btn btn--primary btn--sm" onclick="UserPages._uploadReceipt('${o.order_id}')">明細アップロード</button>` : ''}
-            ${o.receipt_url ? `<a href="${o.receipt_url}" target="_blank" rel="noopener" class="btn btn--outline btn--sm">📎 明細を見る</a>` : ''}
-          </div>
-        </div>`;
-      });
-    }
+    // ファイル名にユーザーID+注文IDを付与
+    const safeName = orderId + '_' + userId + '_' + fileName;
+    blob.setName(safeName);
+    const file = folder.createFile(blob);
+    
+    // 誰でも閲覧可能にする
+    file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+    const fileUrl = file.getUrl();
 
-    // お戻し履歴
-    if (myReturns.length > 0) {
-      html += `<h3 class="section-title mt-2">お戻し履歴</h3>`;
-      myReturns.forEach(r => {
-        html += UI.card(`
-          <div class="flex-between">
-            <span class="font-bold">${r.product_name || '商品'}</span>
-            ${UI.badge(Fmt.returnStatus(r.status), Fmt.statusColor(r.status))}
-          </div>
-          ${UI.confirmRow('受取額', Fmt.yen(r.return_amount))}
-          ${r.keep_amount > 0 ? UI.confirmRow('運用継続', Fmt.yen(r.keep_amount)) : ''}
-          ${UI.confirmRow('受取方法', r.method === 'cash' ? '現金手渡し' : '銀行振込')}
-          ${UI.confirmRow('申請日', Fmt.date(r.created_at))}
-        `);
-      });
-    }
-
-    html += `<button class="btn btn--ghost btn--full mt-2" onclick="App.doLogout()">ログアウト</button>`;
-    return html;
-  },
-
-  _uploadReceipt(orderId) {
-    const input = document.createElement('input');
-    input.type = 'file';
-    input.accept = 'image/*,.pdf';
-    input.onchange = async (e) => {
-      const file = e.target.files[0];
-      if (!file) return;
-      if (file.size > 5 * 1024 * 1024) { UI.toast('ファイルは5MB以下にしてください', 'error'); return; }
-
-      UI.toast('アップロード中...', 'info');
-      
-      // ファイルをBase64に変換
-      const base64 = await new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => resolve(reader.result.split(',')[1]);
-        reader.onerror = () => reject(new Error('ファイル読み込み失敗'));
-        reader.readAsDataURL(file);
-      });
-
-      const res = await API.uploadReceipt({
-        orderId: orderId,
-        fileName: file.name,
-        base64Data: base64,
-        mimeType: file.type || 'image/jpeg',
-      });
-
-      if (res?.success) {
-        UI.toast('明細をアップロードしました');
-        API.clearCache();
-        App.renderPage();
-      } else {
-        UI.toast(res?.error || 'アップロードに失敗しました', 'error');
-      }
-    };
-    input.click();
-  },
-};
-// ═══════════════════════════════════════
-//  管理者画面
-// ═══════════════════════════════════════
-
-const AdminPages = {
-  _state: { editProduct: null, orderFilter: 'all', selectedOrder: null, editUser: null, pwUser: null },
-
-  // ════════════════════════════════
-  //  注文管理
-  // ════════════════════════════════
-  async renderOrders() {
-    this._state.selectedOrder = null;
-    const orders = await API.getOrders();
-    const list = (Array.isArray(orders) ? orders : []).sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)));
-    const filter = this._state.orderFilter;
-
-    // 集計
-    const counts = {
-      all: list.length,
-      pending_payment: list.filter(o => o.status === 'pending_payment').length,
-      pending_receipt: list.filter(o => o.status === 'pending_receipt').length,
-      confirmed: list.filter(o => o.status === 'confirmed').length,
-    };
-
-    // フィルタ適用
-    const filtered = filter === 'all' ? list : list.filter(o => o.status === filter);
-
-    let html = `<h2 class="page-title">注文管理</h2>`;
-
-    // サマリー
-    html += UI.statGrid([
-      UI.stat('全注文', counts.all, '', ''),
-      UI.stat('入金待ち', counts.pending_payment, '', counts.pending_payment > 0 ? 'red' : ''),
-      UI.stat('明細確認待', counts.pending_receipt, '', counts.pending_receipt > 0 ? 'gold' : ''),
-      UI.stat('確定済み', counts.confirmed, '', 'green'),
-    ]);
-
-    // フィルタータブ
-    const filters = [
-      { key: 'all', label: `すべて (${counts.all})` },
-      { key: 'pending_payment', label: `入金待ち (${counts.pending_payment})` },
-      { key: 'pending_receipt', label: `明細確認 (${counts.pending_receipt})` },
-      { key: 'confirmed', label: `確定 (${counts.confirmed})` },
-    ];
-    html += `<div class="filter-tabs">${filters.map(f =>
-      `<button class="filter-tab ${filter === f.key ? 'filter-tab--active' : ''}" onclick="AdminPages._state.orderFilter='${f.key}';App.renderPage()">${f.label}</button>`
-    ).join('')}</div>`;
-
-    // 注文一覧
-    if (filtered.length === 0) {
-      html += UI.empty('該当する注文はありません', '📋');
-    } else {
-      filtered.forEach(o => {
-        const isAction = ['pending_payment', 'pending_receipt'].includes(o.status);
-        html += `<div class="order-admin-card ${isAction ? 'order-admin-card--action' : ''}" onclick="AdminPages._state.selectedOrder='${o.order_id}';App.currentPage='order-detail';App.renderPage()">
-          <div class="flex-between">
-            <div>
-              <span class="font-bold">${o.user_name}</span>
-              <span class="text-xs text-gray ml-05">${o.group_id || ''}</span>
-            </div>
-            ${UI.badge(Fmt.orderStatus(o.status), Fmt.statusColor(o.status))}
-          </div>
-          <div class="order-admin-card__body">
-            <span class="text-sm">${o.product_name} × ${o.qty}個</span>
-            <span class="font-bold">${Fmt.yen(o.transfer_amount || o.total)}</span>
-          </div>
-          <div class="order-admin-card__footer">
-            <span>${Fmt.dateTime(o.created_at)}</span>
-            ${o.receipt_url ? '<span class="text-xs text-blue">📎 明細あり</span>' : ''}
-          </div>
-        </div>`;
-      });
-    }
-
-    return html;
-  },
-
-  // ════════════════════════════════
-  //  注文詳細
-  // ════════════════════════════════
-  async renderOrderDetail() {
-    const orderId = this._state.selectedOrder;
-    if (!orderId) return this.renderOrders();
-
-    const orders = await API.getOrders();
-    const o = (Array.isArray(orders) ? orders : []).find(x => x.order_id === orderId);
-    if (!o) return UI.card('注文が見つかりません') + `<button class="btn btn--ghost btn--full mt-1" onclick="App.navigate('order')">← 注文一覧</button>`;
-
-    let html = `
-      <button class="btn btn--ghost btn--sm mb-1" onclick="App.navigate('order')">← 注文一覧</button>
-      <h2 class="page-title">注文詳細</h2>`;
-
-    // ステータスバー
-    const statusSteps = ['pending_payment', 'pending_receipt', 'confirmed'];
-    const currentIdx = statusSteps.indexOf(o.status);
-    html += `<div class="order-progress">
-      <div class="order-progress__step ${currentIdx >= 0 ? 'order-progress__step--done' : ''}">
-        <div class="order-progress__dot">1</div><div class="order-progress__label">予約済</div>
-      </div>
-      <div class="order-progress__line ${currentIdx >= 1 ? 'order-progress__line--done' : ''}"></div>
-      <div class="order-progress__step ${currentIdx >= 1 ? 'order-progress__step--done' : ''}">
-        <div class="order-progress__dot">2</div><div class="order-progress__label">明細受領</div>
-      </div>
-      <div class="order-progress__line ${currentIdx >= 2 ? 'order-progress__line--done' : ''}"></div>
-      <div class="order-progress__step ${currentIdx >= 2 ? 'order-progress__step--done' : ''}">
-        <div class="order-progress__dot">3</div><div class="order-progress__label">確定</div>
-      </div>
-    </div>`;
-
-    // 注文情報
-    html += UI.card(`
-      <h3 class="section-title">注文情報</h3>
-      ${UI.confirmRow('注文ID', o.order_id)}
-      ${UI.confirmRow('ステータス', UI.badge(Fmt.orderStatus(o.status), Fmt.statusColor(o.status)))}
-      ${UI.confirmRow('注文日時', Fmt.dateTime(o.created_at))}
-      ${o.payment_deadline ? UI.confirmRow('入金期限', Fmt.dateTime(o.payment_deadline)) : ''}
-    `);
-
-    // ユーザー情報
-    html += UI.card(`
-      <h3 class="section-title">ユーザー</h3>
-      ${UI.confirmRow('氏名', o.user_name)}
-      ${UI.confirmRow('グループ', o.group_id)}
-    `);
-
-    // 商品・金額
-    html += UI.card(`
-      <h3 class="section-title">商品・金額</h3>
-      ${UI.confirmRow('商品', o.product_name)}
-      ${UI.confirmRow('数量', Fmt.qty(o.qty))}
-      ${UI.confirmRow('単価', Fmt.yen(o.unit_price))}
-      ${UI.divider()}
-      ${UI.confirmRow('合計金額', Fmt.yen(o.total), 'font-bold')}
-      ${o.balance_used > 0 ? `
-        ${UI.confirmRow('残高充当', '− ' + Fmt.yen(o.balance_used), 'text-green')}
-        ${UI.confirmRow('振込額', Fmt.yen(o.transfer_amount), 'font-bold text-lg')}
-      ` : ''}
-      ${o.transfer_amount === 0 ? `<div class="success-box mt-05">残高のみで購入完了</div>` : ''}
-    `);
-
-    // 振込明細
-    if (o.receipt_url) {
-      html += UI.card(`
-        <h3 class="section-title">📎 振込明細</h3>
-        <div class="receipt-info">
-          <a href="${o.receipt_url}" target="_blank" rel="noopener" class="receipt-link">
-            <span class="receipt-link__icon">🖼️</span>
-            <span class="receipt-link__text">明細を表示する</span>
-            <span class="receipt-link__arrow">→</span>
-          </a>
-        </div>
-      `);
-    }
-
-    // アクションボタン
-    if (o.status === 'pending_payment') {
-      html += UI.card(`
-        <h3 class="section-title">操作</h3>
-        <div class="info-box mb-1"><div class="text-xs">ユーザーからの入金・明細アップロードを待っている状態です</div></div>
-        <button class="btn btn--outline btn--full" onclick="AdminPages._cancelOrder('${o.order_id}')">注文をキャンセル</button>
-      `);
-    } else if (o.status === 'pending_receipt') {
-      html += UI.card(`
-        <h3 class="section-title">操作</h3>
-        <div class="info-box mb-1"><div class="text-xs">ユーザーが明細をアップロードしました。振込内容を確認してください。</div></div>
-        <div class="btn-group">
-          <button class="btn btn--primary btn--full" onclick="AdminPages._confirmOrder('${o.order_id}')">✅ 入金確認 → 注文確定</button>
-          <button class="btn btn--outline btn--full" onclick="AdminPages._rejectReceipt('${o.order_id}')">❌ 明細を差し戻し</button>
-          <button class="btn btn--ghost btn--full text-red" onclick="AdminPages._cancelOrder('${o.order_id}')">注文をキャンセル</button>
-        </div>
-      `);
-    } else if (o.status === 'confirmed') {
-      html += UI.card(`<div class="success-box">✅ この注文は確定済みです</div>`);
-    } else if (o.status === 'cancelled') {
-      html += UI.card(`<div class="text-sm text-gray text-center">この注文はキャンセルされました</div>`);
-    }
-
-    return html;
-  },
-
-  async _confirmOrder(orderId) {
-    UI.confirm('入金を確認し、この注文を確定しますか？', async () => {
-      const res = await API.updateOrder(orderId, { status: 'confirmed' });
-      if (res?.success) { UI.toast('注文を確定しました'); API.clearCache(); App.renderPage(); }
-      else UI.toast(res?.error || '失敗しました', 'error');
-    });
-  },
-
-  async _rejectReceipt(orderId) {
-    UI.confirm('明細を差し戻しますか？ユーザーに再アップロードを依頼します。', async () => {
-      const res = await API.updateOrder(orderId, { status: 'pending_payment', receipt_url: '' });
-      if (res?.success) { UI.toast('明細を差し戻しました'); API.clearCache(); App.renderPage(); }
-      else UI.toast(res?.error || '失敗しました', 'error');
-    });
-  },
-
-  async _cancelOrder(orderId) {
-    UI.confirm('この注文をキャンセルしますか？在庫は戻りません。', async () => {
-      const res = await API.updateOrder(orderId, { status: 'cancelled' });
-      if (res?.success) { UI.toast('注文をキャンセルしました'); API.clearCache(); App.navigate('order'); }
-      else UI.toast(res?.error || '失敗しました', 'error');
-    });
-  },
-
-  // ════════════════════════════════
-  //  商品管理
-  // ════════════════════════════════
-  async renderProducts() {
-    this._state.editProduct = null;
-    const products = await API.getProducts();
-    const list = Array.isArray(products) ? products : [];
-
-    let html = `<div class="flex-between mb-1">
-      <h2 class="page-title">商品管理</h2>
-      <button class="btn btn--primary btn--sm" onclick="AdminPages._state.editProduct='new';App.currentPage='product-edit';App.renderPage()">＋ 新規登録</button>
-    </div>`;
-
-    if (list.length === 0) return html + UI.empty('商品がありません', '📦');
-
-    list.forEach(p => {
-      html += `<div class="product-admin-card" onclick="AdminPages._state.editProduct='${p.product_id}';App.currentPage='product-edit';App.renderPage()">
-        <div class="flex-between">
-          <span class="font-bold">${p.name}</span>
-          ${UI.badge(Fmt.productStatus(p.status), Fmt.statusColor(p.status))}
-        </div>
-        <div class="text-sm mt-05">
-          ${UI.confirmRow('仕入', Fmt.yen(p.buy_price))}
-          ${UI.confirmRow('売単価', Fmt.yen(p.base_sell_price || p.sell_price))}
-          ${UI.confirmRow('在庫', `${p.remaining_qty} / ${p.total_qty}`)}
-          ${UI.confirmRow('締切', Fmt.date(p.deadline, true))}
-        </div>
-      </div>`;
+    // 注文を更新
+    _updateRows(SH.orders, o => o.order_id === orderId, o => {
+      o.receipt_url = fileUrl;
+      o.status = 'pending_receipt';
+      o.updated_at = _now();
+      return o;
     });
 
-    return html;
-  },
+    return { success: true, receipt_url: fileUrl };
+  } catch (err) {
+    Logger.log('Upload error: ' + err.message);
+    return { success: false, error: 'ファイルのアップロードに失敗しました' };
+  }
+}
 
-  // ════════════════════════════════
-  //  商品編集
-  // ════════════════════════════════
-  async renderProductEdit() {
-    const pid = this._state.editProduct;
-    const isNew = pid === 'new';
-    let p = { name: '', buy_price: '', total_qty: '', deadline: '', status: 'draft' };
+// ═══════════════════════════════════════════════════════════════
+//  ユーザー管理（admin専用）
+// ═══════════════════════════════════════════════════════════════
 
-    if (!isNew) {
-      const data = await API.getProduct(pid);
-      if (data && !data.error) p = data;
+function createUser(params) {
+  const loginId = _sanitize(params.login_id);
+  const name = _sanitize(params.name);
+  const email = _sanitize(params.email);
+  const groupId = _sanitize(params.group_id);
+  const role = _sanitize(params.role);
+  const password = _sanitize(params.password);
+
+  if (!loginId || !name || !password) return { success: false, error: 'ログインID・名前・パスワードは必須です' };
+  if (!['admin', 'leader', 'user'].includes(role)) return { success: false, error: 'ロールが不正です' };
+  if (role !== 'admin' && !groupId) return { success: false, error: 'グループを選択してください' };
+
+  // 重複チェック
+  const existing = _readAll(SH.users);
+  if (existing.find(u => String(u.login_id) === loginId)) return { success: false, error: 'このログインIDは既に使われています' };
+
+  const salt = Utilities.getUuid().substring(0, 8);
+  const hash = _sha256(salt + password);
+  const userId = _genId('U');
+
+  const user = {
+    user_id: userId,
+    login_id: loginId,
+    password_hash: hash,
+    salt: salt,
+    password_raw: password,
+    name: name,
+    email: email,
+    group_id: role === 'admin' ? '' : groupId,
+    role: role,
+    is_repeater: params.is_repeater === true || params.is_repeater === 'true' ? 'TRUE' : 'FALSE',
+    reinvest_balance: 0,
+    created_at: _now(),
+  };
+  _appendRow(SH.users, user);
+  return { success: true, user_id: userId };
+}
+
+function updateUser(params) {
+  const targetId = _sanitize(params.user_id);
+  if (!targetId) return { success: false, error: 'user_idが必要です' };
+
+  // ログインID重複チェック
+  if (params.login_id) {
+    const all = _readAll(SH.users);
+    const dup = all.find(u => String(u.login_id) === _sanitize(params.login_id) && u.user_id !== targetId);
+    if (dup) return { success: false, error: 'このログインIDは既に使われています' };
+  }
+
+  const updated = _updateRows(SH.users, u => u.user_id === targetId, u => {
+    if (params.name !== undefined) u.name = _sanitize(params.name);
+    if (params.email !== undefined) u.email = _sanitize(params.email);
+    if (params.login_id !== undefined) u.login_id = _sanitize(params.login_id);
+    if (params.group_id !== undefined) u.group_id = _sanitize(params.group_id);
+    if (params.role !== undefined) u.role = _sanitize(params.role);
+    if (params.is_repeater !== undefined) u.is_repeater = (params.is_repeater === true || params.is_repeater === 'true') ? 'TRUE' : 'FALSE';
+    if (params.reinvest_balance !== undefined) u.reinvest_balance = _num(params.reinvest_balance);
+    return u;
+  });
+  return updated > 0 ? { success: true } : { success: false, error: 'ユーザーが見つかりません' };
+}
+
+function resetPassword(params) {
+  const targetId = _sanitize(params.user_id);
+  const newPassword = _sanitize(params.new_password);
+  if (!targetId || !newPassword) return { success: false, error: 'user_idとnew_passwordが必要です' };
+  if (newPassword.length < 4) return { success: false, error: 'パスワードは4文字以上にしてください' };
+
+  const salt = Utilities.getUuid().substring(0, 8);
+  const hash = _sha256(salt + newPassword);
+
+  const updated = _updateRows(SH.users, u => u.user_id === targetId, u => {
+    u.password_hash = hash;
+    u.salt = salt;
+    u.password_raw = newPassword;
+    return u;
+  });
+  return updated > 0 ? { success: true } : { success: false, error: 'ユーザーが見つかりません' };
+}
+
+function deleteUser(params) {
+  const targetId = _sanitize(params.user_id);
+  if (!targetId) return { success: false, error: 'user_idが必要です' };
+
+  // 管理者自身は削除不可
+  const users = _readAll(SH.users);
+  const target = users.find(u => u.user_id === targetId);
+  if (!target) return { success: false, error: 'ユーザーが見つかりません' };
+  if (target.role === 'admin') {
+    const adminCount = users.filter(u => u.role === 'admin').length;
+    if (adminCount <= 1) return { success: false, error: '最後の管理者は削除できません' };
+  }
+
+  // 行を削除
+  const sheet = _sheet(SH.users);
+  const data = sheet.getDataRange().getValues();
+  const headers = data[0].map(h => String(h).trim());
+  const idCol = headers.indexOf('user_id');
+  for (let i = data.length - 1; i >= 1; i--) {
+    if (String(data[i][idCol]) === targetId) {
+      sheet.deleteRow(i + 1);
+      return { success: true };
     }
+  }
+  return { success: false, error: 'ユーザーが見つかりません' };
+}
 
-    let html = `
-      <button class="btn btn--ghost btn--sm mb-1" onclick="App.navigate('product')">← 商品一覧</button>
-      <h2 class="page-title">${isNew ? '商品登録' : '商品編集'}</h2>`;
+// ═══════════════════════════════════════════════════════════════
+//  初期セットアップ用関数（1回だけ実行）
+// ═══════════════════════════════════════════════════════════════
 
-    html += UI.card(`
-      <div class="form-group">
-        <label class="form-label">商品名</label>
-        <input type="text" class="input" id="pe-name" value="${p.name}" placeholder="例: CRG533">
-      </div>
-      <div class="form-group">
-        <label class="form-label">仕入単価 (¥)</label>
-        <input type="number" class="input" id="pe-buyprice" value="${p.buy_price}" placeholder="14000">
-      </div>
-      <div class="form-group">
-        <label class="form-label">売単価（基準価格）(¥)</label>
-        <input type="number" class="input" id="pe-sellprice" value="${p.base_sell_price || p.sell_price || ''}" placeholder="15000">
-        <div class="text-xs text-gray mt-05">各グループリーダーがこの価格をベースに調整します</div>
-      </div>
-      <div class="form-group">
-        <label class="form-label">総数量</label>
-        <input type="number" class="input" id="pe-qty" value="${p.total_qty}" placeholder="1000">
-      </div>
-      <div class="form-group">
-        <label class="form-label">締切日</label>
-        <input type="date" class="input" id="pe-deadline" value="${p.deadline ? p.deadline.substring(0, 10) : ''}">
-      </div>
-      ${!isNew ? `
-      <div class="form-group">
-        <label class="form-label">ステータス</label>
-        <select class="input" id="pe-status">
-          <option value="draft" ${p.status === 'draft' ? 'selected' : ''}>下書き</option>
-          <option value="active" ${p.status === 'active' ? 'selected' : ''}>販売中</option>
-          <option value="closed" ${p.status === 'closed' ? 'selected' : ''}>締切</option>
-        </select>
-      </div>` : ''}
-      <button class="btn btn--primary btn--full mt-1" onclick="AdminPages._saveProduct('${pid}')">${isNew ? '登録する' : '保存する'}</button>
-    `);
+/**
+ * ★ 初回のみ手動実行: Apps Script エディタでこの関数を選択→実行
+ *   管理者アカウントのパスワードハッシュを生成してシートに書き込みます
+ */
+function setupInitialAdmin() {
+  const password = 'admin123'; // ★ 初期パスワード
+  const salt = Utilities.getUuid().substring(0, 8);
+  const hash = _sha256(salt + password);
 
-    // グループ別価格（既存商品のみ）
-    if (!isNew) {
-      const prices = await API.getGroupPrices(pid);
-      const groups = await API.getGroups();
-      const priceList = Array.isArray(prices) ? prices : [];
+  // usersシートのadmin行に直接書き込み
+  const updated = _updateRows(SH.users, u => String(u.login_id) === 'admin', u => {
+    u.password_hash = hash;
+    u.salt = salt;
+    u.password_raw = password;
+    return u;
+  });
 
-      html += `<h3 class="section-title mt-2">グループ別価格</h3>`;
-      priceList.forEach(gp => {
-        const gName = (Array.isArray(groups) ? groups : []).find(g => g.group_id === gp.group_id)?.name || gp.group_id;
-        html += UI.card(`
-          <div class="flex-between">
-            <span class="font-bold">${gName}</span>
-            <span class="text-sm">利益率: ${Fmt.pct(gp.profit_rate)}</span>
-          </div>
-          <div class="flex-between mt-05">
-            <span class="text-sm">売単価</span>
-            <span class="font-bold">${Fmt.yen(gp.sell_price)}</span>
-          </div>
-        `);
-      });
+  if (updated > 0) {
+    Logger.log('=== 初期管理者セットアップ完了 ===');
+    Logger.log('login_id: admin / password: ' + password);
+    Logger.log('usersシートに直接書き込みました');
+  } else {
+    Logger.log('=== adminユーザーが見つかりません ===');
+    Logger.log('salt: ' + salt);
+    Logger.log('password_hash: ' + hash);
+    Logger.log('password_raw: ' + password);
+    Logger.log('usersシートにadmin行を追加してからやり直してください');
+  }
+}
+
+/**
+ * ★ usersシートにpassword_raw列を追加するヘルパー
+ *   既にある場合はスキップ
+ */
+function addPasswordRawColumn() {
+  const sheet = _sheet(SH.users);
+  const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0].map(h => String(h).trim());
+  
+  if (headers.includes('password_raw')) {
+    Logger.log('password_raw列は既に存在します');
+    return;
+  }
+
+  // salt列の右隣に挿入
+  const saltIdx = headers.indexOf('salt');
+  const insertCol = saltIdx >= 0 ? saltIdx + 2 : headers.length + 1;
+  sheet.insertColumnAfter(insertCol - 1);
+  sheet.getRange(1, insertCol).setValue('password_raw').setFontWeight('bold').setBackground('#E8F0FE');
+  Logger.log('password_raw列を追加しました（' + insertCol + '列目）');
+}
+
+/**
+ * ★ productsシートにsell_price列を追加するヘルパー
+ *   既にある場合はスキップ
+ */
+function addSellPriceColumn() {
+  const sheet = _sheet(SH.products);
+  const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0].map(h => String(h).trim());
+  
+  if (headers.includes('sell_price')) {
+    Logger.log('sell_price列は既に存在します');
+    return;
+  }
+
+  // buy_price列の右隣に挿入
+  const buyIdx = headers.indexOf('buy_price');
+  const insertCol = buyIdx >= 0 ? buyIdx + 2 : headers.length + 1;
+  sheet.insertColumnAfter(insertCol - 1);
+  sheet.getRange(1, insertCol).setValue('sell_price').setFontWeight('bold').setBackground('#E8F0FE');
+  Logger.log('sell_price列を追加しました（' + insertCol + '列目）');
+}
+
+/**
+ * ★ usersシートに銀行口座列を追加するヘルパー
+ */
+function addBankColumns() {
+  const sheet = _sheet(SH.users);
+  const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0].map(h => String(h).trim());
+  const cols = ['bank_name', 'bank_branch', 'bank_type', 'bank_number', 'bank_holder'];
+  let added = 0;
+  cols.forEach(col => {
+    if (!headers.includes(col)) {
+      const nextCol = sheet.getLastColumn() + 1;
+      sheet.getRange(1, nextCol).setValue(col).setFontWeight('bold').setBackground('#E8F0FE');
+      added++;
     }
-
-    return html;
-  },
-
-  async _saveProduct(pid) {
-    const name = $('#pe-name')?.value?.trim();
-    const buy_price = Number($('#pe-buyprice')?.value);
-    const sell_price = Number($('#pe-sellprice')?.value);
-    const total_qty = Number($('#pe-qty')?.value);
-    const deadline = $('#pe-deadline')?.value;
-    const status = $('#pe-status')?.value;
-
-    if (!name) { UI.toast('商品名を入力してください', 'error'); return; }
-    if (!buy_price || buy_price <= 0) { UI.toast('仕入単価を入力してください', 'error'); return; }
-    if (!sell_price || sell_price <= 0) { UI.toast('売単価を入力してください', 'error'); return; }
-    if (sell_price < buy_price) { UI.toast('売単価は仕入単価以上にしてください', 'error'); return; }
-
-    let res;
-    if (pid === 'new') {
-      res = await API.createProduct({ name, buy_price, sell_price, total_qty, deadline });
-    } else {
-      res = await API.updateProduct({ productId: pid, name, buy_price, sell_price, status, deadline, total_qty });
-    }
-
-    if (res?.success) {
-      UI.toast(pid === 'new' ? '商品を登録しました' : '商品を保存しました');
-      App.navigate('product');
-    } else {
-      UI.toast(res?.error || '保存に失敗しました', 'error');
-    }
-  },
-
-  // ════════════════════════════════
-  //  ダッシュボード
-  // ════════════════════════════════
-  async renderDashboard() {
-    const res = await API.getDashboard();
-    const d = res?.dashboard || {};
-
-    let html = `<h2 class="page-title">ダッシュボード</h2>`;
-
-    html += UI.statGrid([
-      UI.stat('ユーザー数', d.total_users || 0, '', 'blue'),
-      UI.stat('商品数', `${d.active_products || 0} / ${d.total_products || 0}`, '販売中/全体', 'green'),
-      UI.stat('注文数', d.total_orders || 0, `確定: ${d.confirmed_orders || 0} / 未処理: ${d.pending_orders || 0}`, 'purple'),
-      UI.stat('売上合計', Fmt.yen(d.total_sales || 0), '確定済み', 'gold'),
-      UI.stat('未処理お戻し', d.pending_returns || 0, Fmt.yen(d.total_return_amount || 0), d.pending_returns > 0 ? 'red' : ''),
-    ]);
-
-    // 未処理注文への導線
-    const orderCount = (d.pending_orders || 0);
-    if (orderCount > 0) {
-      html += UI.card(`
-        <div class="flex-between">
-          <div>
-            <div class="font-bold">未処理の注文が ${orderCount}件 あります</div>
-            <div class="text-xs text-gray mt-05">入金待ち・明細確認待ちの注文</div>
-          </div>
-          <button class="btn btn--primary btn--sm" onclick="App.navigate('order')">注文管理へ →</button>
-        </div>
-      `);
-    }
-
-    // 未処理お戻しへの導線
-    if ((d.pending_returns || 0) > 0) {
-      html += UI.card(`
-        <div class="flex-between">
-          <div>
-            <div class="font-bold">未処理のお戻しが ${d.pending_returns}件 あります</div>
-            <div class="text-xs text-gray mt-05">合計: ${Fmt.yen(d.total_return_amount || 0)}</div>
-          </div>
-          <button class="btn btn--outline btn--sm" onclick="App.navigate('return')">お戻し管理へ →</button>
-        </div>
-      `);
-    }
-
-    return html;
-  },
-
-  // ════════════════════════════════
-  //  お戻し管理
-  // ════════════════════════════════
-  async renderReturns() {
-    const returns = await API.getReturns();
-    const list = Array.isArray(returns) ? returns : [];
-
-    let html = `<h2 class="page-title">お戻し管理</h2>`;
-
-    const unprocessed = list.filter(r => ['unprocessed', 'applied'].includes(r.status));
-    const processed = list.filter(r => !['unprocessed', 'applied'].includes(r.status));
-
-    if (unprocessed.length === 0 && processed.length === 0) return html + UI.empty('お戻し申請はありません', '↩️');
-
-    if (unprocessed.length > 0) {
-      html += `<h3 class="section-title">未処理 (${unprocessed.length}件)</h3>`;
-      unprocessed.forEach(r => {
-        html += UI.card(`
-          <div class="flex-between">
-            <span class="font-bold">${r.user_name}</span>
-            ${UI.badge(Fmt.returnStatus(r.status), Fmt.statusColor(r.status))}
-          </div>
-          ${UI.confirmRow('商品', r.product_name || '-')}
-          ${UI.confirmRow('受取額', Fmt.yen(r.return_amount))}
-          ${r.keep_amount > 0 ? UI.confirmRow('運用継続', Fmt.yen(r.keep_amount)) : ''}
-          ${UI.confirmRow('方法', r.method === 'cash' ? '現金手渡し' : '銀行振込')}
-          ${r.desired_date ? UI.confirmRow('希望日', r.desired_date) : ''}
-          ${UI.confirmRow('申請日', Fmt.dateTime(r.created_at))}
-          <div class="btn-group mt-1">
-            <button class="btn btn--primary btn--sm" onclick="AdminPages._processReturn('${r.return_id}', '${r.method === 'cash' ? 'handed' : 'remitted'}')">
-              ${r.method === 'cash' ? '手渡し済み' : '送金済み'}
-            </button>
-            <button class="btn btn--outline btn--sm" onclick="AdminPages._processReturn('${r.return_id}', 'processing')">処理中</button>
-          </div>
-        `);
-      });
-    }
-
-    if (processed.length > 0) {
-      html += `<h3 class="section-title mt-2">処理済み (${processed.length}件)</h3>`;
-      processed.forEach(r => {
-        html += UI.card(`
-          <div class="flex-between">
-            <span>${r.user_name}</span>
-            ${UI.badge(Fmt.returnStatus(r.status), Fmt.statusColor(r.status))}
-          </div>
-          <div class="text-sm">${Fmt.yen(r.return_amount)} / ${Fmt.dateTime(r.created_at)}</div>
-        `);
-      });
-    }
-
-    return html;
-  },
-
-  async _processReturn(returnId, status) {
-    const labels = { processing: '処理中', remitted: '送金済み', handed: '手渡し済み' };
-    UI.confirm(`ステータスを「${labels[status]}」に変更しますか？`, async () => {
-      const res = await API.updateReturn(returnId, { status });
-      if (res?.success) { UI.toast('ステータスを更新しました'); App.renderPage(); }
-      else UI.toast(res?.error || '失敗しました', 'error');
-    });
-  },
-
-  // ════════════════════════════════
-  //  ユーザー管理
-  // ════════════════════════════════
-  async renderUsers() {
-    this._state.editUser = null;
-    this._state.pwUser = null;
-    const users = await API.getUsers();
-    const groups = await API.getGroups();
-    const list = Array.isArray(users) ? users : [];
-    const groupList = Array.isArray(groups) ? groups : [];
-
-    let html = `<div class="flex-between mb-1">
-      <h2 class="page-title">ユーザー管理</h2>
-      <button class="btn btn--primary btn--sm" onclick="AdminPages._state.editUser='new';App.currentPage='user-edit';App.renderPage()">＋ 新規登録</button>
-    </div>`;
-
-    // ロール別集計
-    const admins = list.filter(u => u.role === 'admin');
-    const leaders = list.filter(u => u.role === 'leader');
-    const users_ = list.filter(u => u.role === 'user');
-
-    html += UI.statGrid([
-      UI.stat('管理者', admins.length, '', 'purple'),
-      UI.stat('リーダー', leaders.length, '', 'blue'),
-      UI.stat('ユーザー', users_.length, '', 'green'),
-    ]);
-
-    if (list.length === 0) return html + UI.empty('ユーザーがいません', '👥');
-
-    // グループ別に表示
-    const roleOrder = { admin: 0, leader: 1, user: 2 };
-    const sorted = [...list].sort((a, b) => (roleOrder[a.role] || 9) - (roleOrder[b.role] || 9));
-
-    sorted.forEach(u => {
-      const gName = groupList.find(g => g.group_id === u.group_id)?.name || '';
-      const roleLabel = { admin: '管理者', leader: 'リーダー', user: 'ユーザー' }[u.role] || u.role;
-      const roleColor = { admin: 'purple', leader: 'blue', user: 'green' }[u.role] || 'gray';
-
-      html += `<div class="user-card" onclick="AdminPages._state.editUser='${u.user_id}';App.currentPage='user-edit';App.renderPage()">
-        <div class="flex-between">
-          <div>
-            <span class="font-bold">${u.name}</span>
-            <span class="text-xs text-gray ml-05">${gName}</span>
-          </div>
-          ${UI.badge(roleLabel, roleColor)}
-        </div>
-        <div class="user-card__meta">
-          <span>ID: ${u.login_id || '-'}</span>
-          <span>${u.email || '-'}</span>
-          ${u.reinvest_balance > 0 ? `<span class="text-green">残高: ${Fmt.yen(u.reinvest_balance)}</span>` : ''}
-        </div>
-      </div>`;
-    });
-
-    return html;
-  },
-
-  // ════════════════════════════════
-  //  ユーザー編集/新規登録
-  // ════════════════════════════════
-  async renderUserEdit() {
-    const uid = this._state.editUser;
-    const isNew = uid === 'new';
-    const groups = await API.getGroups();
-    const groupList = Array.isArray(groups) ? groups : [];
-
-    let u = { name: '', login_id: '', email: '', group_id: '', role: 'user', is_repeater: false };
-    if (!isNew) {
-      const users = await API.getUsers();
-      const found = (Array.isArray(users) ? users : []).find(x => x.user_id === uid);
-      if (found) u = found;
-    }
-
-    let html = `
-      <button class="btn btn--ghost btn--sm mb-1" onclick="App.navigate('users')">← ユーザー一覧</button>
-      <h2 class="page-title">${isNew ? 'ユーザー登録' : 'ユーザー編集'}</h2>`;
-
-    html += UI.card(`
-      <div class="form-group">
-        <label class="form-label">名前 *</label>
-        <input type="text" class="input" id="ue-name" value="${u.name || ''}" placeholder="田中 太郎">
-      </div>
-      <div class="form-group">
-        <label class="form-label">ログインID *</label>
-        <input type="text" class="input" id="ue-loginid" value="${u.login_id || ''}" placeholder="tanaka">
-      </div>
-      ${isNew ? `
-      <div class="form-group">
-        <label class="form-label">パスワード *</label>
-        <input type="text" class="input" id="ue-password" value="" placeholder="4文字以上">
-      </div>` : ''}
-      <div class="form-group">
-        <label class="form-label">メールアドレス</label>
-        <input type="email" class="input" id="ue-email" value="${u.email || ''}" placeholder="tanaka@example.com">
-      </div>
-      <div class="form-group">
-        <label class="form-label">ロール *</label>
-        <select class="input" id="ue-role">
-          <option value="user" ${u.role === 'user' ? 'selected' : ''}>ユーザー</option>
-          <option value="leader" ${u.role === 'leader' ? 'selected' : ''}>リーダー</option>
-          <option value="admin" ${u.role === 'admin' ? 'selected' : ''}>管理者</option>
-        </select>
-      </div>
-      <div class="form-group">
-        <label class="form-label">グループ</label>
-        <select class="input" id="ue-group">
-          <option value="">なし</option>
-          ${groupList.map(g => `<option value="${g.group_id}" ${u.group_id === g.group_id ? 'selected' : ''}>${g.name}</option>`).join('')}
-        </select>
-      </div>
-      <div class="form-group">
-        <label class="form-label">
-          <input type="checkbox" id="ue-repeater" ${(u.is_repeater === true || u.is_repeater === 'TRUE') ? 'checked' : ''}> リピーター
-        </label>
-      </div>
-      <button class="btn btn--primary btn--full mt-1" onclick="AdminPages._saveUser('${uid}')">${isNew ? '登録する' : '保存する'}</button>
-    `);
-
-    // 既存ユーザー：パスワードリセット & 削除
-    if (!isNew) {
-      html += UI.card(`
-        <h3 class="section-title">パスワードリセット</h3>
-        <div class="form-group">
-          <input type="text" class="input" id="ue-newpw" placeholder="新しいパスワード（4文字以上）">
-        </div>
-        <button class="btn btn--outline btn--full" onclick="AdminPages._resetPw('${uid}')">パスワードを変更</button>
-      `);
-
-      html += UI.card(`
-        <h3 class="section-title text-red">危険な操作</h3>
-        <button class="btn btn--ghost btn--full text-red" onclick="AdminPages._deleteUser('${uid}', '${u.name}')">このユーザーを削除</button>
-      `);
-
-      // 残高情報
-      if (u.reinvest_balance > 0) {
-        html += UI.card(`
-          <h3 class="section-title">運用残高</h3>
-          ${UI.confirmRow('現在の残高', Fmt.yen(u.reinvest_balance))}
-        `);
-      }
-    }
-
-    return html;
-  },
-
-  async _saveUser(uid) {
-    const name = $('#ue-name')?.value?.trim();
-    const login_id = $('#ue-loginid')?.value?.trim();
-    const email = $('#ue-email')?.value?.trim();
-    const role = $('#ue-role')?.value;
-    const group_id = $('#ue-group')?.value;
-    const is_repeater = $('#ue-repeater')?.checked;
-
-    if (!name) { UI.toast('名前を入力してください', 'error'); return; }
-    if (!login_id) { UI.toast('ログインIDを入力してください', 'error'); return; }
-
-    let res;
-    if (uid === 'new') {
-      const password = $('#ue-password')?.value?.trim();
-      if (!password || password.length < 4) { UI.toast('パスワードは4文字以上にしてください', 'error'); return; }
-      res = await API.createUser({ name, login_id, password, email, role, group_id, is_repeater });
-    } else {
-      res = await API.updateUser({ user_id: uid, name, login_id, email, role, group_id, is_repeater });
-    }
-
-    if (res?.success) {
-      UI.toast(uid === 'new' ? 'ユーザーを登録しました' : 'ユーザーを保存しました');
-      App.navigate('users');
-    } else {
-      UI.toast(res?.error || '保存に失敗しました', 'error');
-    }
-  },
-
-  async _resetPw(uid) {
-    const pw = $('#ue-newpw')?.value?.trim();
-    if (!pw || pw.length < 4) { UI.toast('パスワードは4文字以上にしてください', 'error'); return; }
-    UI.confirm('パスワードを変更しますか？', async () => {
-      const res = await API.resetPassword(uid, pw);
-      if (res?.success) { UI.toast('パスワードを変更しました'); $('#ue-newpw').value = ''; }
-      else UI.toast(res?.error || '変更に失敗しました', 'error');
-    });
-  },
-
-  async _deleteUser(uid, name) {
-    UI.confirm(`「${name}」を削除しますか？この操作は取り消せません。`, async () => {
-      const res = await API.deleteUser(uid);
-      if (res?.success) { UI.toast('ユーザーを削除しました'); App.navigate('users'); }
-      else UI.toast(res?.error || '削除に失敗しました', 'error');
-    });
-  },
-};
-// ═══════════════════════════════════════
-//  リーダー画面
-// ═══════════════════════════════════════
-
-const LeaderPages = {
-  _state: {},
-
-  // ════════════════════════════════
-  //  価格設定
-  // ════════════════════════════════
-  async renderPricing() {
-    const products = await API.getProducts();
-    const groupId = Auth.getGroupId();
-    const groupName = Auth.getGroupName();
-    const list = Array.isArray(products) ? products : [];
-    const active = list.filter(p => p.status === 'active');
-
-    let html = `<h2 class="page-title">価格設定</h2>
-      <div class="text-sm text-gray mb-1">${groupName} の販売単価を調整</div>`;
-
-    if (active.length === 0) return html + UI.empty('販売中の商品はありません', '💰');
-
-    for (const p of active) {
-      const prices = await API.getGroupPrices(p.product_id);
-      const gp = (Array.isArray(prices) ? prices : []).find(g => g.group_id === groupId);
-      const baseSellPrice = p.base_sell_price || 0;
-      const groupSellPrice = gp?.sell_price || baseSellPrice;
-      const profitRate = gp?.profit_rate || 0;
-      const diff = groupSellPrice - baseSellPrice;
-
-      html += UI.card(`
-        <div class="flex-between">
-          <span class="font-bold">${p.name}</span>
-          ${UI.badge(Fmt.productStatus(p.status), Fmt.statusColor(p.status))}
-        </div>
-        <div class="price-info-grid mt-05">
-          ${UI.confirmRow('仕入単価', Fmt.yen(p.buy_price))}
-          ${UI.confirmRow('基準売単価（管理者設定）', Fmt.yen(baseSellPrice))}
-          <div class="divider"></div>
-          ${UI.confirmRow('グループ販売単価', `<span class="font-bold text-lg">${Fmt.yen(groupSellPrice)}</span>`, '')}
-          ${diff !== 0 ? UI.confirmRow('基準との差額', `<span class="${diff > 0 ? 'text-green' : 'text-red'}">${diff > 0 ? '+' : ''}${Fmt.yen(diff)}</span>`) : ''}
-          ${UI.confirmRow('利益率（対仕入）', Fmt.pct(profitRate))}
-        </div>
-        <div class="form-group mt-1">
-          <label class="form-label">販売単価を変更</label>
-          <div class="amount-input-wrap">
-            <span class="amount-prefix">¥</span>
-            <input type="number" class="input input--amount" id="price-${p.product_id}" value="${groupSellPrice}" min="${p.buy_price}" step="100">
-          </div>
-          <div class="text-xs text-gray mt-05">※ 仕入単価（${Fmt.yen(p.buy_price)}）以上で設定してください</div>
-          <button class="btn btn--primary btn--sm mt-05" onclick="LeaderPages._savePrice('${p.product_id}', '${groupId}')">保存</button>
-        </div>
-      `);
-    }
-
-    return html;
-  },
-
-  async _savePrice(productId, groupId) {
-    const input = $(`#price-${productId}`);
-    const sellPrice = Number(input?.value);
-    if (!sellPrice || sellPrice <= 0) { UI.toast('有効な金額を入力してください', 'error'); return; }
-
-    const res = await API.updateGroupPrice({ productId, groupId, sell_price: sellPrice });
-    if (res?.success) {
-      UI.toast('売単価を更新しました');
-      API.clearCache();
-      App.renderPage();
-    } else {
-      UI.toast(res?.error || '更新に失敗しました', 'error');
-    }
-  },
-
-  // ════════════════════════════════
-  //  注文確認
-  // ════════════════════════════════
-  async renderOrders() {
-    const orders = await API.getOrders();
-    const list = Array.isArray(orders) ? orders : [];
-
-    let html = `<h2 class="page-title">注文確認</h2>
-      <div class="text-sm text-gray mb-1">${Auth.getGroupName()} の注文一覧</div>`;
-
-    if (list.length === 0) return html + UI.empty('注文はありません', '📋');
-
-    // ステータス別集計
-    const pending = list.filter(o => ['pending_payment', 'pending_receipt'].includes(o.status));
-    const confirmed = list.filter(o => o.status === 'confirmed');
-
-    html += UI.statGrid([
-      UI.stat('未処理', pending.length, '', pending.length > 0 ? 'red' : ''),
-      UI.stat('確定済', confirmed.length, Fmt.yen(confirmed.reduce((s, o) => s + o.total, 0)), 'green'),
-    ]);
-
-    list.sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)));
-    list.forEach(o => {
-      html += UI.card(`
-        <div class="flex-between">
-          <span class="font-bold">${o.user_name}</span>
-          ${UI.badge(Fmt.orderStatus(o.status), Fmt.statusColor(o.status))}
-        </div>
-        ${UI.confirmRow('商品', o.product_name)}
-        ${UI.confirmRow('数量', Fmt.qty(o.qty))}
-        ${UI.confirmRow('金額', Fmt.yen(o.total))}
-        ${o.balance_used > 0 ? UI.confirmRow('残高充当', Fmt.yen(o.balance_used)) : ''}
-        ${o.transfer_amount > 0 ? UI.confirmRow('振込額', Fmt.yen(o.transfer_amount)) : ''}
-        ${UI.confirmRow('注文日', Fmt.dateTime(o.created_at))}
-        ${o.status === 'pending_receipt' ? `<button class="btn btn--primary btn--sm mt-05" onclick="LeaderPages._confirmOrder('${o.order_id}')">入金確認</button>` : ''}
-      `);
-    });
-
-    return html;
-  },
-
-  async _confirmOrder(orderId) {
-    UI.confirm('入金を確認して注文を確定しますか？', async () => {
-      const res = await API.updateOrder(orderId, { status: 'confirmed' });
-      if (res?.success) { UI.toast('注文を確定しました'); App.renderPage(); }
-      else UI.toast(res?.error || '失敗しました', 'error');
-    });
-  },
-
-  // ════════════════════════════════
-  //  お戻し処理
-  // ════════════════════════════════
-  async renderReturns() {
-    const returns = await API.getReturns();
-    const list = Array.isArray(returns) ? returns : [];
-
-    let html = `<h2 class="page-title">お戻し処理</h2>
-      <div class="text-sm text-gray mb-1">${Auth.getGroupName()}</div>`;
-
-    if (list.length === 0) return html + UI.empty('お戻し申請はありません', '↩️');
-
-    const unprocessed = list.filter(r => ['unprocessed', 'applied'].includes(r.status));
-    const processed = list.filter(r => !['unprocessed', 'applied'].includes(r.status));
-
-    if (unprocessed.length > 0) {
-      html += `<h3 class="section-title">未処理 (${unprocessed.length}件)</h3>`;
-      unprocessed.forEach(r => {
-        html += UI.card(`
-          <div class="flex-between">
-            <span class="font-bold">${r.user_name}</span>
-            ${UI.badge(Fmt.returnStatus(r.status), Fmt.statusColor(r.status))}
-          </div>
-          ${UI.confirmRow('受取額', Fmt.yen(r.return_amount))}
-          ${r.keep_amount > 0 ? UI.confirmRow('運用継続', Fmt.yen(r.keep_amount)) : ''}
-          ${UI.confirmRow('方法', r.method === 'cash' ? '現金手渡し' : '銀行振込')}
-          ${r.desired_date ? UI.confirmRow('希望日', r.desired_date) : ''}
-          <div class="btn-group mt-1">
-            <button class="btn btn--primary btn--sm" onclick="LeaderPages._processReturn('${r.return_id}', '${r.method === 'cash' ? 'handed' : 'remitted'}')">
-              ${r.method === 'cash' ? '手渡し完了' : '送金完了'}
-            </button>
-          </div>
-        `);
-      });
-    }
-
-    if (processed.length > 0) {
-      html += `<h3 class="section-title mt-2">処理済み</h3>`;
-      processed.forEach(r => {
-        html += UI.card(`
-          <div class="flex-between">
-            <span>${r.user_name}</span>
-            ${UI.badge(Fmt.returnStatus(r.status), Fmt.statusColor(r.status))}
-          </div>
-          <div class="text-sm">${Fmt.yen(r.return_amount)} / ${Fmt.dateTime(r.created_at)}</div>
-        `);
-      });
-    }
-
-    return html;
-  },
-
-  async _processReturn(returnId, status) {
-    const label = status === 'handed' ? '手渡し完了' : '送金完了';
-    UI.confirm(`「${label}」に更新しますか？`, async () => {
-      const res = await API.updateReturn(returnId, { status });
-      if (res?.success) { UI.toast('ステータスを更新しました'); App.renderPage(); }
-      else UI.toast(res?.error || '失敗しました', 'error');
-    });
-  },
-
-  // ════════════════════════════════
-  //  商品状況
-  // ════════════════════════════════
-  async renderStatus() {
-    const products = await API.getProducts();
-    const orders = await API.getOrders();
-    const returns = await API.getReturns();
-    const groupId = Auth.getGroupId();
-    const groupName = Auth.getGroupName();
-    const list = Array.isArray(products) ? products : [];
-    const orderList = Array.isArray(orders) ? orders : [];
-    const returnList = Array.isArray(returns) ? returns : [];
-
-    let html = `<h2 class="page-title">商品状況</h2>
-      <div class="text-sm text-gray mb-1">${groupName}</div>`;
-
-    if (list.length === 0) return html + UI.empty('商品がありません', '📊');
-
-    const active = list.filter(p => p.status === 'active');
-    const closed = list.filter(p => p.status === 'closed');
-
-    const renderProduct = (p) => {
-      const pOrders = orderList.filter(o => o.product_id === p.product_id);
-      const pReturns = returnList.filter(r => pOrders.some(o => o.order_id === r.order_id));
-
-      const totalOrdered = pOrders.reduce((s, o) => s + (o.qty || 0), 0);
-      const confirmed = pOrders.filter(o => o.status === 'confirmed');
-      const pendingPayment = pOrders.filter(o => o.status === 'pending_payment');
-      const pendingReceipt = pOrders.filter(o => o.status === 'pending_receipt');
-      const paidAmount = confirmed.reduce((s, o) => s + (o.total || 0), 0);
-
-      const pendingReturns = pReturns.filter(r => ['unprocessed', 'applied', 'processing'].includes(r.status));
-      const doneReturns = pReturns.filter(r => ['remitted', 'handed'].includes(r.status));
-
-      html += `<div class="status-card">
-        <div class="status-card__header">
-          <span class="font-bold">${p.name}</span>
-          ${UI.badge(Fmt.productStatus(p.status), Fmt.statusColor(p.status))}
-        </div>
-
-        <div class="status-section">
-          <div class="status-section__title">📦 在庫</div>
-          <div class="status-bar-wrap">
-            <div class="status-bar">
-              <div class="status-bar__fill" style="width:${p.total_qty > 0 ? (1 - p.remaining_qty / p.total_qty) * 100 : 0}%"></div>
-            </div>
-            <div class="status-bar__label">${p.remaining_qty} / ${p.total_qty} 残り</div>
-          </div>
-        </div>
-
-        <div class="status-section">
-          <div class="status-section__title">💰 入金状況</div>
-          <div class="status-chips">
-            <span class="status-chip status-chip--green">確定 ${confirmed.length}件 (${Fmt.yen(paidAmount)})</span>
-            ${pendingReceipt.length > 0 ? `<span class="status-chip status-chip--gold">明細確認 ${pendingReceipt.length}件</span>` : ''}
-            ${pendingPayment.length > 0 ? `<span class="status-chip status-chip--red">入金待ち ${pendingPayment.length}件</span>` : ''}
-          </div>
-        </div>
-
-        ${pOrders.length > 0 ? `
-        <div class="status-section">
-          <div class="status-section__title">👤 注文者</div>
-          <div class="status-users">
-            ${pOrders.map(o => `<div class="status-user-row">
-              <span>${o.user_name}</span>
-              <span>${Fmt.qty(o.qty)}</span>
-              <span>${Fmt.yen(o.total)}</span>
-              ${UI.badge(Fmt.orderStatus(o.status), Fmt.statusColor(o.status))}
-            </div>`).join('')}
-          </div>
-        </div>` : ''}
-
-        ${pReturns.length > 0 ? `
-        <div class="status-section">
-          <div class="status-section__title">↩️ お戻し</div>
-          <div class="status-chips">
-            ${pendingReturns.length > 0 ? `<span class="status-chip status-chip--red">未処理 ${pendingReturns.length}件</span>` : ''}
-            ${doneReturns.length > 0 ? `<span class="status-chip status-chip--green">処理済 ${doneReturns.length}件</span>` : ''}
-          </div>
-        </div>` : ''}
-      </div>`;
-    };
-
-    if (active.length > 0) {
-      html += `<h3 class="section-title">販売中</h3>`;
-      active.forEach(renderProduct);
-    }
-    if (closed.length > 0) {
-      html += `<h3 class="section-title mt-2">締切済み</h3>`;
-      closed.forEach(renderProduct);
-    }
-
-    return html;
-  },
-};
-// ═══════════════════════════════════════
-//  メインアプリケーション
-// ═══════════════════════════════════════
-
-const App = {
-  currentPage: null,
-  _loadingCount: 0,
-
-  init() {
-    Auth.init();
-    if (Auth.isLoggedIn()) {
-      this.renderApp();
-    } else {
-      this.showLogin();
-    }
-  },
-
-  // ── ローディング ──
-  setLoading(on) {
-    this._loadingCount += on ? 1 : -1;
-    if (this._loadingCount < 0) this._loadingCount = 0;
-    const el = $('#global-loading');
-    if (el) el.style.display = this._loadingCount > 0 ? 'flex' : 'none';
-  },
-
-  // ── ログイン画面 ──
-  showLogin() {
-    $('#app').innerHTML = `
-      <div class="login-screen">
-        <div class="login-card">
-          <div class="login-logo">出資管理</div>
-          <div class="login-subtitle">Investment Management System</div>
-          <div class="form-group">
-            <label class="form-label">ログインID</label>
-            <input type="text" id="login-id" class="input" placeholder="IDを入力" autocomplete="username">
-          </div>
-          <div class="form-group">
-            <label class="form-label">パスワード</label>
-            <input type="password" id="login-pw" class="input" placeholder="パスワードを入力" autocomplete="current-password">
-          </div>
-          <div id="login-error" class="text-red text-sm mb-1" style="display:none"></div>
-          <button id="login-btn" class="btn btn--primary btn--full" onclick="App.doLogin()">ログイン</button>
-        </div>
-      </div>`;
-    // Enterキー対応
-    const pw = $('#login-pw');
-    if (pw) pw.addEventListener('keydown', e => { if (e.key === 'Enter') App.doLogin(); });
-    const id = $('#login-id');
-    if (id) { id.addEventListener('keydown', e => { if (e.key === 'Enter') pw.focus(); }); id.focus(); }
-  },
-
-  async doLogin() {
-    const loginId = $('#login-id')?.value?.trim();
-    const password = $('#login-pw')?.value?.trim();
-    const errEl = $('#login-error');
-    const btn = $('#login-btn');
-    if (!loginId || !password) { errEl.textContent = 'IDとパスワードを入力してください'; errEl.style.display = 'block'; return; }
-
-    btn.disabled = true; btn.textContent = 'ログイン中...';
-    const res = await API.login(loginId, password);
-    btn.disabled = false; btn.textContent = 'ログイン';
-
-    if (res?.success) {
-      Auth.setSession(res.token, res.user);
-      API.clearCache();
-      this.renderApp();
-    } else {
-      errEl.textContent = res?.error || 'ログインに失敗しました';
-      errEl.style.display = 'block';
-    }
-  },
-
-  doLogout() {
-    UI.confirm('ログアウトしますか？', async () => {
-      await API.logout();
-      Auth.clear();
-      API.clearCache();
-      this.showLogin();
-    });
-  },
-
-  // ── メインレイアウト ──
-  renderApp() {
-    const role = Auth.getRole();
-    const user = Auth.currentUser;
-
-    $('#app').innerHTML = `
-      <div class="app-layout">
-        <header class="app-header">
-          <div class="app-header__left">
-            <div class="app-header__title">出資管理</div>
-            <span class="app-header__user">${user.name}${user.group_name ? ' / ' + user.group_name : ''}</span>
-          </div>
-          <button class="app-header__logout" onclick="App.doLogout()" title="ログアウト">⏻</button>
-        </header>
-        <nav class="app-nav" id="app-nav"></nav>
-        <main class="app-main" id="app-main">
-          <div id="global-loading" class="global-loading" style="display:none">
-            <div class="spinner"></div>
-          </div>
-          <div id="page-content"></div>
-        </main>
-      </div>`;
-
-    this._renderNav(role);
-    this._navigateDefault(role);
-  },
-
-  _renderNav(role) {
-    const tabs = {
-      user:   [{ id: 'top', icon: '🏠', label: 'TOP' }, { id: 'status', icon: '📊', label: '商品状況' }, { id: 'mypage', icon: '👤', label: 'マイページ' }],
-      admin:  [{ id: 'dashboard', icon: '📊', label: 'ダッシュボード' }, { id: 'order', icon: '📋', label: '注文管理' }, { id: 'product', icon: '📦', label: '商品' }, { id: 'return', icon: '↩️', label: 'お戻し' }, { id: 'users', icon: '👥', label: 'ユーザー' }],
-      leader: [{ id: 'price', icon: '💰', label: '価格設定' }, { id: 'status', icon: '📊', label: '商品状況' }, { id: 'order', icon: '📋', label: '注文確認' }, { id: 'return', icon: '↩️', label: 'お戻し' }],
-    };
-    const items = tabs[role] || tabs.user;
-    $('#app-nav').innerHTML = items.map(t =>
-      `<button class="nav-tab" data-page="${t.id}" onclick="App.navigate('${t.id}')">
-        <span class="nav-tab__icon">${t.icon}</span>
-        <span class="nav-tab__label">${t.label}</span>
-      </button>`
-    ).join('');
-  },
-
-  _navigateDefault(role) {
-    const defaults = { user: 'top', admin: 'dashboard', leader: 'price' };
-    this.navigate(defaults[role] || 'top');
-  },
-
-  navigate(pageId) {
-    this.currentPage = pageId;
-
-    // タブのアクティブ状態
-    $$('.nav-tab').forEach(t => t.classList.toggle('nav-tab--active', t.dataset.page === pageId));
-
-    // ページレンダリング
-    this.renderPage();
-  },
-
-  async renderPage(opts = {}) {
-    const role = Auth.getRole();
-    const pageId = this.currentPage;
-    const container = $('#page-content');
-    if (!container) return;
-
-    // soft: ローカル状態変更のみ（スケルトン非表示）
-    if (!opts.soft) container.innerHTML = UI.skeleton(5);
-
-    try {
-      let html = '';
-      // ロール+ページでルーティング
-      if (role === 'user') {
-        switch (pageId) {
-          case 'top':    html = await UserPages.renderTop(); break;
-          case 'detail': html = await UserPages.renderDetail(); break;
-          case 'purchase': html = await UserPages.renderPurchase(); break;
-          case 'return': html = await UserPages.renderReturn(); break;
-          case 'status': html = await UserPages.renderStatus(); break;
-          case 'mypage': html = await UserPages.renderMyPage(); break;
-          default: html = UI.empty('ページが見つかりません');
-        }
-      } else if (role === 'admin') {
-        switch (pageId) {
-          case 'dashboard': html = await AdminPages.renderDashboard(); break;
-          case 'order':     html = await AdminPages.renderOrders(); break;
-          case 'order-detail': html = await AdminPages.renderOrderDetail(); break;
-          case 'product':   html = await AdminPages.renderProducts(); break;
-          case 'product-edit': html = await AdminPages.renderProductEdit(); break;
-          case 'return':    html = await AdminPages.renderReturns(); break;
-          case 'users':     html = await AdminPages.renderUsers(); break;
-          case 'user-edit': html = await AdminPages.renderUserEdit(); break;
-          default: html = UI.empty('ページが見つかりません');
-        }
-      } else if (role === 'leader') {
-        switch (pageId) {
-          case 'price':  html = await LeaderPages.renderPricing(); break;
-          case 'status': html = await LeaderPages.renderStatus(); break;
-          case 'order':  html = await LeaderPages.renderOrders(); break;
-          case 'return': html = await LeaderPages.renderReturns(); break;
-          default: html = UI.empty('ページが見つかりません');
-        }
-      }
-      container.innerHTML = `<div class="page-content">${html}</div>`;
-    } catch (err) {
-      console.error('Render error:', err);
-      container.innerHTML = `<div class="page-content">${UI.card(`<div class="text-red">ページの読み込みに失敗しました</div><p class="text-sm text-gray mt-1">${err.message}</p><button class="btn btn--primary btn--sm mt-1" onclick="App.renderPage()">再試行</button>`)}</div>`;
-    }
-  },
-};
-
-// ── 起動 ──
-document.addEventListener('DOMContentLoaded', () => App.init());
-</script></body></html>
+  });
+  Logger.log(added > 0 ? added + '個の銀行口座列を追加しました' : '銀行口座列は既に存在します');
+}
+
+/**
+ * ★ ユーザー追加時に実行: パスワードハッシュ生成用
+ */
+function generatePasswordHash() {
+  const password = 'user123'; // ★ 変更して実行
+  const salt = Utilities.getUuid().substring(0, 8);
+  const hash = _sha256(salt + password);
+
+  Logger.log('salt: ' + salt);
+  Logger.log('password_hash: ' + hash);
+  Logger.log('password_raw: ' + password);
+}
