@@ -702,7 +702,7 @@ const API = {
   /** HTTPリクエスト */
   async _fetch(action, params) {
     const token = Auth.getToken();
-    const body = { action, token, ...params };
+    const body = { ...params, action, token };
 
     try {
       App.setLoading(true);
