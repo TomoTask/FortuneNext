@@ -1528,9 +1528,9 @@ const UserPages = {
       ${maxQty >= 10 ? UI.card(`
         <h3 class="section-title">${lp ? 'セット購入数量（各商品の数量）' : '購入数量'}</h3>
         <div class="qty-selector">
-          <button class="qty-btn" onclick="UserPages._setQty(${qty} - 1)">−</button>
-          <input type="number" class="qty-input" value="${qty}" min="10" max="${maxQty}" onchange="UserPages._setQty(Number(this.value))">
-          <button class="qty-btn" onclick="UserPages._setQty(${qty} + 1)">+</button>
+          <button class="qty-btn" onclick="UserPages._changeQty(-1)">−</button>
+          <input type="number" class="qty-input" id="qty-input" value="${qty}" min="10" max="${maxQty}" onchange="UserPages._setQty(Number(this.value))">
+          <button class="qty-btn" onclick="UserPages._changeQty(1)">+</button>
         </div>
         <div class="text-center mt-1">
           <div class="text-2xl font-bold qty-total-value">${Fmt.yen(total)}</div>
@@ -1556,17 +1556,26 @@ const UserPages = {
       `) : UI.card(`<div class="text-center text-gray">この商品は在庫不足です（最低10個必要）</div>`)}`;
   },
 
+  _changeQty(delta) {
+    this._setQty(this._state.purchaseQty + delta);
+  },
+
   _setQty(n) {
-    this._state.purchaseQty = Math.max(1, Math.min(n, 999));
-    const el = document.querySelector('.qty-input');
-    const tv = document.querySelector('.qty-total-value');
-    const ts = document.querySelector('.qty-total-sub');
-    if (el) el.value = this._state.purchaseQty;
+    const q = Math.max(1, Math.min(Math.round(n), 999));
+    this._state.purchaseQty = q;
+    const el = document.getElementById('qty-input');
+    if (el) el.value = q;
     const p1 = this._state._cachedPrice || 0;
     const p2 = this._state._cachedLinkedPrice || 0;
-    const t = (p1 + p2) * this._state.purchaseQty;
+    const t = (p1 + p2) * q;
+    const tv = document.querySelector('.qty-total-value');
     if (tv) tv.textContent = Fmt.yen(t);
-    // sub label is complex with linked, just update total
+    const ts = document.querySelector('.qty-total-sub');
+    if (ts) {
+      const lp = this._state._linkedProduct;
+      if (lp) ts.textContent = `${lp.name}: ${Fmt.yen(p2)} × ${q} + ${Fmt.yen(p1)} × ${q}`;
+      else ts.textContent = `${Fmt.yen(p1)} × ${q}個`;
+    }
   },
 
   _startPurchase() {
