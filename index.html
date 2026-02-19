@@ -1284,7 +1284,7 @@ const Fmt = {
     return { pending_payment: '入金待ち', pending_receipt: '明細確認中', confirmed: '確定', cancelled: 'キャンセル' }[s] || s;
   },
   returnStatus(s) {
-    return { unprocessed: '未処理', remitted: '送金済', handed: '手渡し済' }[s] || s;
+    return { unprocessed: '未処理', applied: '申請済', remitted: '送金済', handed: '手渡し済' }[s] || s;
   },
   productStatus(s) {
     return { draft: '下書き', active: '販売中', closed: '締切', completed: '完了' }[s] || s;
@@ -1292,7 +1292,7 @@ const Fmt = {
   statusColor(s) {
     return {
       pending_payment: 'red', pending_receipt: 'gold', confirmed: 'green', cancelled: 'gray',
-      unprocessed: 'red', remitted: 'green', handed: 'green',
+      unprocessed: 'red', applied: 'gold', remitted: 'green', handed: 'green',
       active: 'green', closed: 'gray', draft: 'gold', completed: 'blue',
     }[s] || 'gray';
   },
@@ -1434,8 +1434,9 @@ const UserPages = {
 
   _productCard(p, active) {
     const remaining = p.remaining_qty > 0 ? `残り${p.remaining_qty}個` : '完売';
+    const isLinked = !!p.linked_product_id;
     return `<div class="product-card ${!active ? 'product-card--closed' : ''}" onclick="${active ? `UserPages.goDetail('${p.product_id}')` : ''}">
-      <div class="product-card__header"><span class="product-card__name">${p.name}</span>${UI.badge(Fmt.productStatus(p.status), Fmt.statusColor(p.status))}</div>
+      <div class="product-card__header"><span class="product-card__name">${p.name}</span>${isLinked ? UI.badge('🔗 セット', 'blue') + ' ' : ''}${UI.badge(Fmt.productStatus(p.status), Fmt.statusColor(p.status))}</div>
       <div class="product-card__body"><span class="product-card__price">${Fmt.yen(p.sell_price)}</span><span class="product-card__unit">/個</span></div>
       <div class="product-card__footer"><span>${remaining}</span><span>締切: ${Fmt.date(p.deadline, true)}</span></div>
     </div>`;
@@ -1444,26 +1445,52 @@ const UserPages = {
   goDetail(pid) { this._reset(); this._state.selectedProduct = pid; App.currentPage = 'detail'; App.renderPage(); },
 
   // ════════════════════════════════
-  //  商品詳細（数量ルール付き）
+  //  商品詳細（数量ルール・セット対応）
   // ════════════════════════════════
   async renderDetail() {
     const pid = this._state.selectedProduct;
     if (!pid) return this.renderTop();
     const p = await API.getProduct(pid);
     if (!p || p.error) return UI.empty('商品が見つかりません');
-    const maxQty = Math.min(p.remaining_qty, 999);
+
+    // セット商品取得
+    let lp = null;
+    if (p.linked_product_id) {
+      lp = await API.getProduct(p.linked_product_id);
+      if (lp?.error) lp = null;
+    }
+    this._state._linkedProduct = lp;
+
+    const maxQty = Math.min(p.remaining_qty, lp ? Math.min(lp.remaining_qty, 999) : 999);
     const qty = this._state.purchaseQty;
     const price = p.sell_price || 0;
-    const total = price * qty;
+    const lpPrice = lp ? (lp.sell_price || 0) : 0;
+    const total = (price + lpPrice) * qty;
     this._state._cachedPrice = price;
+    this._state._cachedLinkedPrice = lpPrice;
     const canPurchase = qty >= 10 && qty <= maxQty;
     const methodNote = qty >= 50 ? '銀行振込 または 現金手渡し' : qty >= 10 ? '銀行振込のみ' : '';
 
     return `
       <button class="btn btn--ghost btn--sm mb-1" onclick="App.navigate('top')">← 戻る</button>
-      ${UI.card(`<h2 class="text-lg font-bold">${p.name}</h2><div class="mt-1">${UI.confirmRow('販売価格', Fmt.yen(price))}${UI.confirmRow('残り在庫', Fmt.qty(p.remaining_qty))}${UI.confirmRow('締切', Fmt.date(p.deadline, true))}</div>`)}
-      ${p.remaining_qty >= 10 ? UI.card(`
-        <h3 class="section-title">購入数量</h3>
+      ${lp ? `<div class="info-box mb-1"><div class="text-sm font-bold">🔗 セット商品（1:1購入条件）</div><div class="text-xs mt-05">この商品は ${lp.name} との同数セット購入が必要です</div></div>` : ''}
+      ${UI.card(`
+        <h2 class="text-lg font-bold">${p.name}</h2>
+        <div class="mt-1">
+          ${UI.confirmRow('販売価格', Fmt.yen(price))}
+          ${UI.confirmRow('残り在庫', Fmt.qty(p.remaining_qty))}
+          ${UI.confirmRow('締切', Fmt.date(p.deadline, true))}
+        </div>
+      `)}
+      ${lp ? UI.card(`
+        <h2 class="text-lg font-bold">${lp.name}</h2>
+        <div class="mt-1">
+          ${UI.confirmRow('販売価格', Fmt.yen(lpPrice))}
+          ${UI.confirmRow('残り在庫', Fmt.qty(lp.remaining_qty))}
+        </div>
+      `) : ''}
+      ${maxQty >= 10 ? UI.card(`
+        <h3 class="section-title">${lp ? 'セット購入数量（各商品の数量）' : '購入数量'}</h3>
         <div class="qty-selector">
           <button class="qty-btn" onclick="UserPages._setQty(${qty} - 1)">−</button>
           <input type="number" class="qty-input" value="${qty}" min="10" max="${maxQty}" onchange="UserPages._setQty(Number(this.value))">
@@ -1471,8 +1498,16 @@ const UserPages = {
         </div>
         <div class="text-center mt-1">
           <div class="text-2xl font-bold qty-total-value">${Fmt.yen(total)}</div>
-          <div class="text-xs text-gray qty-total-sub">${Fmt.yen(price)} × ${qty}個</div>
+          ${lp ? `<div class="text-xs text-gray qty-total-sub">${p.name}: ${Fmt.yen(price)} × ${qty} + ${lp.name}: ${Fmt.yen(lpPrice)} × ${qty}</div>` : `<div class="text-xs text-gray qty-total-sub">${Fmt.yen(price)} × ${qty}個</div>`}
         </div>
+        ${lp ? `
+          <div class="info-box mt-1">
+            <div class="text-xs font-bold mb-05">📊 セット利益率</div>
+            <div class="text-xs">${p.name}: ${Fmt.yen(price)} (利益率${p.profit_rate || '-'}%)</div>
+            <div class="text-xs">${lp.name}: ${Fmt.yen(lpPrice)} (利益率${lp.profit_rate || '-'}%)</div>
+            <div class="text-xs font-bold mt-05">平均利益率: 約${p.profit_rate && lp.profit_rate ? ((p.profit_rate + lp.profit_rate) / 2).toFixed(1) : '-'}%</div>
+          </div>
+        ` : ''}
         <div class="info-box mt-1">
           <div class="text-xs font-bold mb-05">📋 購入ルール</div>
           <div class="text-xs">・10個以上：銀行振込で購入可</div>
@@ -1482,7 +1517,7 @@ const UserPages = {
         ${qty < 10 ? '<div class="warning-box mt-1">⚠️ 最低10個以上から購入できます</div>' : ''}
         ${methodNote && qty >= 10 ? `<div class="text-xs text-gray text-center mt-05">お支払い方法: ${methodNote}</div>` : ''}
         <button class="btn btn--primary btn--full mt-1" ${!canPurchase ? 'disabled' : ''} onclick="UserPages._startPurchase()">購入手続きへ →</button>
-      `) : UI.card(`<div class="text-center text-gray">この商品は在庫不足です（残り${p.remaining_qty}個、最低10個必要）</div>`)}`;
+      `) : UI.card(`<div class="text-center text-gray">この商品は在庫不足です（最低10個必要）</div>`)}`;
   },
 
   _setQty(n) {
@@ -1491,11 +1526,11 @@ const UserPages = {
     const tv = document.querySelector('.qty-total-value');
     const ts = document.querySelector('.qty-total-sub');
     if (el) el.value = this._state.purchaseQty;
-    if (tv && this._state._cachedPrice) {
-      const t = this._state._cachedPrice * this._state.purchaseQty;
-      tv.textContent = Fmt.yen(t);
-      if (ts) ts.textContent = Fmt.yen(this._state._cachedPrice) + ' × ' + this._state.purchaseQty + '個';
-    }
+    const p1 = this._state._cachedPrice || 0;
+    const p2 = this._state._cachedLinkedPrice || 0;
+    const t = (p1 + p2) * this._state.purchaseQty;
+    if (tv) tv.textContent = Fmt.yen(t);
+    // sub label is complex with linked, just update total
   },
 
   _startPurchase() {
@@ -1518,12 +1553,15 @@ const UserPages = {
     const p = await API.getProduct(this._state.selectedProduct);
     if (!p) return UI.empty('商品情報取得エラー');
     const qty = this._state.purchaseQty;
+    const lp = this._state._linkedProduct;
+    const lpPrice = lp ? (lp.sell_price || 0) : 0;
     const total = (p.sell_price || 0) * qty;
+    const grandTotal = total + lpPrice * qty;
     const balance = Auth.currentUser?.reinvest_balance || 0;
-    if (step === 1) return this._purchaseBalance(p, total, balance);
-    if (step === 1.5) return this._purchaseMethod(p, total);
+    if (step === 1) return this._purchaseBalance(p, grandTotal, balance);
+    if (step === 1.5) return this._purchaseMethod(p, grandTotal);
     if (step === 2) return this._purchaseConfirm(p, total, balance);
-    if (step === 3) return this._purchaseDone(p, total);
+    if (step === 3) return this._purchaseDone(p, grandTotal);
     return this.renderDetail();
   },
 
@@ -1592,8 +1630,11 @@ const UserPages = {
 
   // Step2: 最終確認（+借用書）
   async _purchaseConfirm(p, total, balance) {
+    const lp = this._state._linkedProduct;
+    const lpPrice = lp ? (lp.sell_price || 0) : 0;
+    const grandTotal = lp ? total + lpPrice * this._state.purchaseQty : total;
     const used = this._state.balanceUsed;
-    const transfer = total - used;
+    const transfer = grandTotal - used;
     const qty = this._state.purchaseQty;
     const method = this._state.paymentMethod;
     const isTransfer = method === 'transfer';
@@ -1608,11 +1649,20 @@ const UserPages = {
       ${UI.steps(3, 4)}
       ${UI.card(`
         <h3 class="section-title">注文内容の確認</h3>
-        ${UI.confirmRow('商品', p.name)}
-        ${UI.confirmRow('数量', Fmt.qty(qty))}
+        ${UI.confirmRow('商品①', p.name)}
         ${UI.confirmRow('単価', Fmt.yen(p.sell_price))}
+        ${lp ? `
+          ${UI.confirmRow('商品②', lp.name)}
+          ${UI.confirmRow('単価', Fmt.yen(lpPrice))}
+          <div class="text-xs text-blue mt-05 mb-05">🔗 セット購入（1:1）</div>
+        ` : ''}
+        ${UI.confirmRow('数量', Fmt.qty(qty) + (lp ? '（各商品）' : ''))}
         ${UI.divider()}
-        ${UI.confirmRow('合計金額', Fmt.yen(total), 'font-bold')}
+        ${lp ? `
+          ${UI.confirmRow(p.name, Fmt.yen(p.sell_price * qty))}
+          ${UI.confirmRow(lp.name, Fmt.yen(lpPrice * qty))}
+        ` : ''}
+        ${UI.confirmRow('合計金額', Fmt.yen(grandTotal), 'font-bold')}
         ${used > 0 ? `${UI.confirmRow('💰 残高充当', '− ' + Fmt.yen(used), 'text-green')}${UI.confirmRow(isTransfer ? '🏦 振込額' : '💵 手渡し額', Fmt.yen(transfer), 'font-bold text-lg')}<div class="text-xs text-gray mt-05">充当後の残高: ${Fmt.yen(balance - used)}</div>` : ''}
         ${UI.confirmRow('支払方法', isTransfer ? '銀行振込' : '現金手渡し')}
         ${isTransfer && transfer > 0 ? `
@@ -2106,8 +2156,8 @@ const LeaderPages = {
 
     if (list.length === 0) return html + UI.empty('お戻し申請はありません', '↩️');
 
-    const unprocessed = list.filter(r => r.status === 'unprocessed');
-    const processed = list.filter(r => !r.status === 'unprocessed');
+    const unprocessed = list.filter(r => ['unprocessed', 'applied'].includes(r.status));
+    const processed = list.filter(r => !['unprocessed', 'applied'].includes(r.status));
 
     if (unprocessed.length > 0) {
       html += `<h3 class="section-title">未処理 (${unprocessed.length}件)</h3>`;
@@ -2186,7 +2236,7 @@ const LeaderPages = {
       const pendingReceipt = pOrders.filter(o => o.status === 'pending_receipt');
       const paidAmount = confirmed.reduce((s, o) => s + (o.total || 0), 0);
 
-      const pendingReturns = pReturns.filter(r => r.status === 'unprocessed');
+      const pendingReturns = pReturns.filter(r => ['unprocessed', 'applied'].includes(r.status));
       const doneReturns = pReturns.filter(r => ['remitted', 'handed'].includes(r.status));
 
       html += `<div class="status-card">
@@ -2484,16 +2534,18 @@ const AdminPages = {
     if (list.length === 0) return html + UI.empty('商品がありません', '📦');
 
     list.forEach(p => {
+      const linkedName = p.linked_product_id ? (list.find(x => x.product_id === p.linked_product_id)?.name || '') : '';
       html += `<div class="product-admin-card" onclick="AdminPages._state.editProduct='${p.product_id}';App.currentPage='product-edit';App.renderPage()">
         <div class="flex-between">
           <span class="font-bold">${p.name}</span>
-          ${UI.badge(Fmt.productStatus(p.status), Fmt.statusColor(p.status))}
+          <span>${linkedName ? UI.badge('🔗 セット', 'blue') + ' ' : ''}${UI.badge(Fmt.productStatus(p.status), Fmt.statusColor(p.status))}</span>
         </div>
         <div class="text-sm mt-05">
           ${UI.confirmRow('仕入', Fmt.yen(p.buy_price))}
           ${UI.confirmRow('売単価', Fmt.yen(p.base_sell_price || p.sell_price))}
           ${UI.confirmRow('在庫', `${p.remaining_qty} / ${p.total_qty}`)}
           ${UI.confirmRow('締切', Fmt.date(p.deadline, true))}
+          ${linkedName ? UI.confirmRow('セット相手', linkedName) : ''}
         </div>
       </div>`;
     });
@@ -2507,12 +2559,19 @@ const AdminPages = {
   async renderProductEdit() {
     const pid = this._state.editProduct;
     const isNew = pid === 'new';
-    let p = { name: '', buy_price: '', total_qty: '', deadline: '', status: 'draft' };
+    let p = { name: '', buy_price: '', total_qty: '', deadline: '', status: 'draft', linked_product_id: '' };
+
+    // 全商品リスト（セット選択用）
+    const allProducts = await API.getProducts();
+    const productList = Array.isArray(allProducts) ? allProducts : [];
 
     if (!isNew) {
       const data = await API.getProduct(pid);
       if (data && !data.error) p = data;
     }
+
+    // リンク可能な商品（自分以外のactive/draft）
+    const linkableProducts = productList.filter(x => x.product_id !== pid);
 
     let html = `
       <button class="btn btn--ghost btn--sm mb-1" onclick="App.navigate('product')">← 商品一覧</button>
@@ -2539,6 +2598,14 @@ const AdminPages = {
       <div class="form-group">
         <label class="form-label">締切日</label>
         <input type="date" class="input" id="pe-deadline" value="${p.deadline ? p.deadline.substring(0, 10) : ''}">
+      </div>
+      <div class="form-group">
+        <label class="form-label">🔗 セット商品（1:1紐付け）</label>
+        <select class="input" id="pe-linked">
+          <option value="">なし（単体販売）</option>
+          ${linkableProducts.map(lp => `<option value="${lp.product_id}" ${p.linked_product_id === lp.product_id ? 'selected' : ''}>${lp.name} (${Fmt.yen(lp.sell_price)})</option>`).join('')}
+        </select>
+        <div class="text-xs text-gray mt-05">選択すると、ユーザーは必ず同数をセット購入します</div>
       </div>
       ${!isNew ? `
       <div class="form-group">
@@ -2584,6 +2651,7 @@ const AdminPages = {
     const total_qty = Number($('#pe-qty')?.value);
     const deadline = $('#pe-deadline')?.value;
     const status = $('#pe-status')?.value;
+    const linked_product_id = $('#pe-linked')?.value || '';
 
     if (!name) { UI.toast('商品名を入力してください', 'error'); return; }
     if (!buy_price || buy_price <= 0) { UI.toast('仕入単価を入力してください', 'error'); return; }
@@ -2592,9 +2660,9 @@ const AdminPages = {
 
     let res;
     if (pid === 'new') {
-      res = await API.createProduct({ name, buy_price, sell_price, total_qty, deadline });
+      res = await API.createProduct({ name, buy_price, sell_price, total_qty, deadline, linked_product_id });
     } else {
-      res = await API.updateProduct({ productId: pid, name, buy_price, sell_price, status, deadline, total_qty });
+      res = await API.updateProduct({ productId: pid, name, buy_price, sell_price, status, deadline, total_qty, linked_product_id });
     }
 
     if (res?.success) {
@@ -2661,8 +2729,8 @@ const AdminPages = {
 
     let html = `<h2 class="page-title">お戻し管理</h2>`;
 
-    const unprocessed = list.filter(r => r.status === 'unprocessed');
-    const processed = list.filter(r => !r.status === 'unprocessed');
+    const unprocessed = list.filter(r => ['unprocessed', 'applied'].includes(r.status));
+    const processed = list.filter(r => !['unprocessed', 'applied'].includes(r.status));
 
     if (unprocessed.length === 0 && processed.length === 0) return html + UI.empty('お戻し申請はありません', '↩️');
 
