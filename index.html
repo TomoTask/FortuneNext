@@ -1104,6 +1104,19 @@ select.input {
 <body>
 <div id="app"></div>
 <script>
+// ── config.js ──
+// ═══════════════════════════════════════
+//  設定
+// ═══════════════════════════════════════
+
+const CONFIG = {
+  // ★ GASデプロイURL（デプロイ後にここを書き換え）
+  API_URL: 'https://script.google.com/macros/s/AKfycbzD5_qptnAccJnW8XzEgGxbW_7Rz1BT9SpzovLpxMzXEIL9emSGgag-1fZXtxgMFxmx1A/exec',
+
+  PAYMENT_DEADLINE_DAYS: 2,
+  CACHE_TTL_MS: 5 * 60 * 1000,
+};
+
 // ── api.js ──
 // ═══════════════════════════════════════
 //  API通信モジュール（本番専用）
