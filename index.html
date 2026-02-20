@@ -1946,6 +1946,7 @@ const UserPages = {
         <div class="order-card__actions">
           ${canReturn ? `<button class="btn btn--outline btn--sm" onclick="UserPages.goReturn('${o.order_id}')">お戻し申請</button>` : ''}
           ${needUpload && !o.receipt_url && o.payment_method !== 'cash' ? `<button class="btn btn--primary btn--sm" onclick="UserPages._uploadReceipt('${o.order_id}')">明細アップロード</button>` : ''}
+          ${needUpload && o.payment_method === 'cash' ? '<div class="info-box mt-05"><div class="text-xs">💵 LINEで管理者に連絡し、現金をお渡しください</div></div>' : ''}
           ${o.receipt_url ? `<a href="${o.receipt_url}" target="_blank" rel="noopener" class="btn btn--outline btn--sm">📎 明細を見る</a>` : ''}
           ${canDownloadIOU ? `<button class="btn btn--primary btn--sm" onclick="UserPages._downloadIOU('${o.order_id}')">📄 借用書DL</button>` : ''}
         </div></div>`;
@@ -2431,7 +2432,7 @@ const AdminPages = {
             ${UI.badge(Fmt.orderStatus(o.status), Fmt.statusColor(o.status))}
           </div>
           <div class="order-admin-card__body"><span class="text-sm">${o.product_name} × ${o.qty}個</span><span class="font-bold">${Fmt.yen(o.transfer_amount || o.total)}</span></div>
-          <div class="order-admin-card__footer"><span>${Fmt.dateTime(o.created_at)}</span>${o.receipt_url ? '<span class="text-xs text-blue">📎 明細あり</span>' : ''}</div>
+          <div class="order-admin-card__footer"><span>${Fmt.dateTime(o.created_at)}</span>${o.payment_method === 'cash' ? '<span class="text-xs text-green">💵 現金</span>' : ''}${o.receipt_url ? '<span class="text-xs text-blue">📎 明細あり</span>' : ''}</div>
         </div>`;
       });
       if (pendingOrders.length > 5) html += `<button class="btn btn--ghost btn--full mt-05" onclick="AdminPages._state.tradeTab='orders';AdminPages._state.orderFilter='pending_payment';App.navigate('trade')">すべて見る →</button>`;
@@ -2510,7 +2511,7 @@ const AdminPages = {
       html += `<div class="order-admin-card ${isAction ? 'order-admin-card--action' : ''}" onclick="AdminPages._state.selectedOrder='${o.order_id}';App.currentPage='order-detail';App.renderPage()">
         <div class="flex-between"><div><span class="font-bold">${o.user_name}</span> <span class="text-xs text-gray">${o.group_id || ''}</span></div>${UI.badge(Fmt.orderStatus(o.status), Fmt.statusColor(o.status))}</div>
         <div class="order-admin-card__body"><span class="text-sm">${o.product_name} × ${o.qty}個</span><span class="font-bold">${Fmt.yen(o.transfer_amount || o.total)}</span></div>
-        <div class="order-admin-card__footer"><span>${Fmt.dateTime(o.created_at)}</span>${o.receipt_url ? '<span class="text-xs text-blue">📎 明細あり</span>' : ''}</div>
+        <div class="order-admin-card__footer"><span>${Fmt.dateTime(o.created_at)}</span>${o.payment_method === 'cash' ? '<span class="text-xs text-green">💵 現金</span>' : ''}${o.receipt_url ? '<span class="text-xs text-blue">📎 明細あり</span>' : ''}</div>
       </div>`;
     });
     return html;
@@ -2589,7 +2590,12 @@ const AdminPages = {
       html += UI.card(`<h3 class="section-title">📎 振込明細</h3><div class="receipt-info"><a href="${o.receipt_url}" target="_blank" rel="noopener" class="receipt-link"><span class="receipt-link__icon">🖼️</span><span class="receipt-link__text">明細を表示する</span><span class="receipt-link__arrow">→</span></a></div>`);
     }
     if (o.status === 'pending_payment') {
-      html += UI.card(`<h3 class="section-title">操作</h3><div class="info-box mb-1"><div class="text-xs">ユーザーからの入金・明細アップロードを待っている状態です</div></div><button class="btn btn--outline btn--full" onclick="AdminPages._cancelOrder('${o.order_id}')">注文をキャンセル</button>`);
+      const isCash = o.payment_method === 'cash';
+      if (isCash) {
+        html += UI.card(`<h3 class="section-title">操作</h3><div class="info-box mb-1"><div class="text-xs">💵 現金手渡しの注文です。現金を受け取ったら確定してください。</div></div><div class="btn-group"><button class="btn btn--primary btn--full" onclick="AdminPages._confirmOrder('${o.order_id}')">✅ 現金受取確認 → 注文確定</button><button class="btn btn--ghost btn--full text-red" onclick="AdminPages._cancelOrder('${o.order_id}')">注文をキャンセル</button></div>`);
+      } else {
+        html += UI.card(`<h3 class="section-title">操作</h3><div class="info-box mb-1"><div class="text-xs">ユーザーからの入金・明細アップロードを待っている状態です</div></div><button class="btn btn--outline btn--full" onclick="AdminPages._cancelOrder('${o.order_id}')">注文をキャンセル</button>`);
+      }
     } else if (o.status === 'pending_receipt') {
       html += UI.card(`<h3 class="section-title">操作</h3><div class="info-box mb-1"><div class="text-xs">明細をアップロード済み。振込内容を確認してください。</div></div><div class="btn-group"><button class="btn btn--primary btn--full" onclick="AdminPages._confirmOrder('${o.order_id}')">✅ 入金確認 → 注文確定</button><button class="btn btn--outline btn--full" onclick="AdminPages._rejectReceipt('${o.order_id}')">❌ 明細を差し戻し</button><button class="btn btn--ghost btn--full text-red" onclick="AdminPages._cancelOrder('${o.order_id}')">注文をキャンセル</button></div>`);
     } else if (o.status === 'confirmed') {
