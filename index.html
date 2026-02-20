@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<title>2</title>
+<title>枠カツ</title>
 <style>
 /* ═══════════════════════════════════════════════
    出資管理システム v3.0 — Production Design
@@ -1852,7 +1852,7 @@ const UserPages = {
         <h3 class="section-title">受取方法を選択</h3><div class="text-sm text-gray mb-1">受取額: ${Fmt.yen(amt)}</div>
         <div class="choice-group">
           <button class="choice-btn" onclick="UserPages._chooseTransfer()"><div class="choice-btn__title">🏦 銀行振込</div><div class="choice-btn__desc">${hasBank ? user.bank_name + ' (' + user.bank_number + ')' : '口座情報を入力して振込で受取'}</div></button>
-          <button class="choice-btn" onclick="UserPages._state.returnMethod='cash';UserPages._state.returnStep=4;App.renderPage()"><div class="choice-btn__title">💵 現金手渡し</div><div class="choice-btn__desc">日程を選んで対面で受取</div></button>
+          <button class="choice-btn" onclick="UserPages._state.returnMethod='cash';UserPages._state.returnStep=4;App.renderPage()"><div class="choice-btn__title">💵 現金手渡し</div><div class="choice-btn__desc">希望日を選んで対面で受取</div></button>
         </div>
       `)}`;
   },
@@ -1891,19 +1891,22 @@ const UserPages = {
   _retStep4() {
     const isCash = this._state.returnMethod === 'cash'; const isPartial = this._state.returnAction === 'partial';
     const amt = this._state.returnAmount; const keep = (this._state._totalAmount || 0) - amt; const user = Auth.currentUser;
-    const dates = []; const base = new Date('2026-03-04'); const ranks = [2, 3, 1, 0, 0, 3, 2]; const dayNames = ['日','月','火','水','木','金','土'];
-    for (let i = 0; i < 7; i++) { const d = new Date(base); d.setDate(d.getDate() + i); dates.push({ date: d, rank: ranks[i], label: `${d.getMonth()+1}/${d.getDate()}`, day: dayNames[d.getDay()] }); }
-    if (!this._state.returnDate && isCash) { const best = dates.find(d => d.rank === 3); if (best) this._state.returnDate = best.label; }
+    // 現金の場合、日付の最小値を明日に設定
+    const tomorrow = new Date(); tomorrow.setDate(tomorrow.getDate() + 1);
+    const minDate = tomorrow.toISOString().split('T')[0];
     let html = `<button class="btn btn--ghost btn--sm mb-1" onclick="UserPages._state.returnStep=3;App.renderPage()">← 戻る</button>${UI.steps(4, 4)}`;
     html += UI.card(`
-      <h3 class="section-title">${isCash ? '日程を選んで確認' : '最終確認'}</h3>
-      ${isCash ? `<div class="schedule-hint">💡 ⭐の日に合わせるとスムーズにお渡しできます</div><div class="sch-grid">${dates.map(d => {
-        if (d.rank === 0) return `<div class="sch-cell sch-cell--off"><div class="sch-cell__date">${d.label}</div><div class="sch-cell__sub">${d.day}</div></div>`;
-        const sel = this._state.returnDate === d.label; const cls = d.rank === 3 ? 'sch-cell--best' : d.rank === 2 ? 'sch-cell--ok' : 'sch-cell--few';
-        return `<button class="sch-cell ${cls} ${sel ? 'sch-cell--sel' : ''}" onclick="UserPages._state.returnDate='${d.label}';App.renderPage({soft:true})">${d.rank === 3 ? '<div class="sch-cell__star">⭐</div>' : ''}<div class="sch-cell__date">${d.label}</div><div class="sch-cell__sub">${d.day}</div></button>`;
-      }).join('')}</div>${UI.divider()}` : ''}
+      <h3 class="section-title">${isCash ? '希望日を選んで確認' : '最終確認'}</h3>
+      ${isCash ? `
+        <div class="form-group">
+          <label class="form-label">📅 手渡し希望日</label>
+          <input type="date" class="input" id="ret-date" min="${minDate}" value="${this._state.returnDate || ''}" onchange="UserPages._state.returnDate=this.value">
+          <div class="text-xs text-gray mt-05">時間はLINEで管理者とご調整ください</div>
+        </div>
+        ${UI.divider()}
+      ` : ''}
       <div class="mt-05">
-        ${UI.confirmRow('商品', this._state._productName)}${UI.confirmRow('お戻し方法', isPartial ? '一部受取' : '全額受取')}${UI.confirmRow('受取額', Fmt.yen(amt), 'font-bold')}${isPartial ? UI.confirmRow('運用継続', Fmt.yen(keep)) : ''}${UI.confirmRow('受取方法', isCash ? '現金手渡し' : '銀行振込')}${isCash ? UI.confirmRow('希望日', this._state.returnDate || '未選択') : ''}
+        ${UI.confirmRow('商品', this._state._productName)}${UI.confirmRow('お戻し方法', isPartial ? '一部受取' : '全額受取')}${UI.confirmRow('受取額', Fmt.yen(amt), 'font-bold')}${isPartial ? UI.confirmRow('運用継続', Fmt.yen(keep)) : ''}${UI.confirmRow('受取方法', isCash ? '現金手渡し' : '銀行振込')}
       </div>
       ${!isCash && user.bank_name ? `${UI.divider()}<div class="text-xs font-bold text-gray mb-05">振込先口座</div><div class="bank-info">${UI.confirmRow('銀行', user.bank_name)}${user.bank_branch ? UI.confirmRow('支店', user.bank_branch) : ''}${UI.confirmRow('口座', (user.bank_type || '普通') + ' ' + user.bank_number)}${UI.confirmRow('名義', user.bank_holder)}</div><button class="btn btn--ghost btn--sm mt-05" onclick="UserPages._state.returnStep=3.5;App.renderPage()">口座情報を変更</button>` : ''}
       <button class="btn btn--primary btn--full mt-1" onclick="UserPages._submitReturn()">お戻し申請を確定する</button>
@@ -1921,7 +1924,7 @@ const UserPages = {
 
   _retStep5() {
     const ret = this._state._returnResult;
-    return `${UI.card(`<div class="text-center"><div class="text-3xl mb-05">✅</div><h2 class="text-lg font-bold">お戻し申請が完了しました</h2></div><div class="mt-1">${UI.confirmRow('受取額', Fmt.yen(ret?.return_amount))}${ret?.keep_amount > 0 ? UI.confirmRow('運用継続', Fmt.yen(ret.keep_amount)) : ''}${UI.confirmRow('受取方法', ret?.method === 'cash' ? '現金手渡し' : '銀行振込')}${ret?.desired_date ? UI.confirmRow('希望日', ret.desired_date) : ''}</div><div class="info-box mt-1"><div class="text-xs">処理状況は「取引中」タブで確認できます</div></div>`)}<button class="btn btn--primary btn--full mt-1" onclick="App.navigate('active')">取引中へ</button>`;
+    return `${UI.card(`<div class="text-center"><div class="text-3xl mb-05">✅</div><h2 class="text-lg font-bold">お戻し申請が完了しました</h2></div><div class="mt-1">${UI.confirmRow('受取額', Fmt.yen(ret?.return_amount))}${ret?.keep_amount > 0 ? UI.confirmRow('運用継続', Fmt.yen(ret.keep_amount)) : ''}${UI.confirmRow('受取方法', ret?.method === 'cash' ? '現金手渡し' : '銀行振込')}${ret?.desired_date ? UI.confirmRow('希望日', Fmt.date(ret.desired_date, true)) : ''}</div>${ret?.method === 'cash' ? '<div class="info-box mt-1"><div class="text-xs">時間はLINEで管理者とご調整ください</div></div>' : ''}<div class="info-box mt-1"><div class="text-xs">処理状況は「取引中」タブで確認できます</div></div>`)}<button class="btn btn--primary btn--full mt-1" onclick="App.navigate('active')">取引中へ</button>`;
   },
 
   // ════════════════════════════════
@@ -2542,7 +2545,7 @@ const AdminPages = {
     if (cashPending.length > 0) {
       const byDate = {};
       cashPending.forEach(r => {
-        const d = r.desired_date || '日程未定';
+        const d = r.desired_date ? Fmt.date(r.desired_date, true) : '日程未定';
         if (!byDate[d]) byDate[d] = { total: 0, items: [] };
         byDate[d].total += Number(r.return_amount);
         byDate[d].items.push(r);
@@ -2596,7 +2599,7 @@ const AdminPages = {
             ${UI.confirmRow('商品', r.product_name || '-')}
             ${UI.confirmRow('受取額', Fmt.yen(r.return_amount))}
             ${r.keep_amount > 0 ? UI.confirmRow('運用継続', Fmt.yen(r.keep_amount)) : ''}
-            ${r.desired_date ? UI.confirmRow('希望日', r.desired_date) : UI.confirmRow('希望日', '<span class="text-red">未定</span>')}
+            ${r.desired_date ? UI.confirmRow('希望日', Fmt.date(r.desired_date, true)) : UI.confirmRow('希望日', '<span class="text-red">未定</span>')}
             ${UI.confirmRow('申請日', Fmt.dateTime(r.created_at))}
             <div class="btn-group mt-1"><button class="btn btn--primary btn--full" onclick="AdminPages._processReturn('${r.return_id}', 'handed')">✅ 手渡し完了</button></div>
           `);
