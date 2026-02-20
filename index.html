@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<title>ショップ管理</title>
+<title>2</title>
 <style>
 /* ═══════════════════════════════════════════════
    出資管理システム v3.0 — Production Design
@@ -1103,6 +1103,18 @@ select.input {
 .sub-tabs { display: flex; gap: 0; margin-bottom: 16px; background: var(--gray-100); border-radius: 10px; padding: 3px; }
 .sub-tab { flex: 1; padding: 10px 0; text-align: center; border: none; background: transparent; font-size: 14px; font-weight: 600; color: var(--gray-500); border-radius: 8px; cursor: pointer; transition: all 0.2s; }
 .sub-tab--active { background: #fff; color: var(--gray-900); box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+
+/* ── 現金スケジュール ── */
+.cash-schedule { background: #fff; border-radius: 12px; border: 2px solid var(--green-100, #dcfce7); overflow: hidden; margin-bottom: 16px; }
+.cash-schedule__header { padding: 12px 16px; background: var(--green-50, #f0fdf4); border-bottom: 1px solid var(--green-100, #dcfce7); display: flex; justify-content: space-between; align-items: center; }
+.cash-schedule__day { border-bottom: 1px solid var(--gray-100); }
+.cash-schedule__day:last-child { border-bottom: none; }
+.cash-schedule__day-header { display: flex; justify-content: space-between; align-items: center; padding: 10px 16px; background: var(--gray-50); }
+.cash-schedule__date { font-size: 13px; font-weight: 700; }
+.cash-schedule__day-total { font-size: 15px; font-weight: 700; color: var(--green-600, #16a34a); }
+.cash-schedule__people { padding: 0 16px; }
+.cash-schedule__person { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid var(--gray-50); font-size: 13px; }
+.cash-schedule__person:last-child { border-bottom: none; }
 
 </style>
 </head>
@@ -2524,26 +2536,75 @@ const AdminPages = {
     const processed = list.filter(r => !['unprocessed', 'applied'].includes(r.status));
     let html = '';
     if (unprocessed.length === 0 && processed.length === 0) return UI.empty('お戻し申請はありません', '↩️');
-    if (unprocessed.length > 0) {
-      html += `<h3 class="section-title">未処理 (${unprocessed.length}件)</h3>`;
-      unprocessed.forEach(r => {
-        const isTransfer = r.method !== 'cash';
-        const hasBank = isTransfer && r.user_bank_name && r.user_bank_number;
-        html += UI.card(`
-          <div class="flex-between"><span class="font-bold">${r.user_name}</span>${UI.badge(Fmt.returnStatus(r.status), Fmt.statusColor(r.status))}</div>
-          ${UI.confirmRow('商品', r.product_name || '-')}
-          ${UI.confirmRow('受取額', Fmt.yen(r.return_amount))}
-          ${r.keep_amount > 0 ? UI.confirmRow('運用継続', Fmt.yen(r.keep_amount)) : ''}
-          ${UI.confirmRow('方法', isTransfer ? '銀行振込' : '現金手渡し')}
-          ${r.desired_date ? UI.confirmRow('希望日', r.desired_date) : ''}
-          ${UI.confirmRow('申請日', Fmt.dateTime(r.created_at))}
-          ${isTransfer ? `${UI.divider()}<div class="text-xs font-bold text-gray mb-05">🏦 振込先</div>${hasBank ? `<div class="bank-info">${UI.confirmRow('銀行', r.user_bank_name)}${r.user_bank_branch ? UI.confirmRow('支店', r.user_bank_branch) : ''}${UI.confirmRow('口座', (r.user_bank_type || '普通') + ' ' + r.user_bank_number)}${r.user_bank_holder ? UI.confirmRow('名義', r.user_bank_holder) : ''}</div>` : '<div class="warning-box">⚠️ ユーザーの口座情報が未登録です</div>'}` : ''}
-          <div class="btn-group mt-1"><button class="btn btn--primary btn--full" onclick="AdminPages._processReturn('${r.return_id}', '${r.method === 'cash' ? 'handed' : 'remitted'}')">✅ ${r.method === 'cash' ? '手渡し完了' : '送金完了'}</button></div>
-        `);
+
+    // ── 現金スケジュール（日付別集計） ──
+    const cashPending = unprocessed.filter(r => r.method === 'cash');
+    if (cashPending.length > 0) {
+      const byDate = {};
+      cashPending.forEach(r => {
+        const d = r.desired_date || '日程未定';
+        if (!byDate[d]) byDate[d] = { total: 0, items: [] };
+        byDate[d].total += Number(r.return_amount);
+        byDate[d].items.push(r);
       });
+      const dates = Object.keys(byDate).sort((a, b) => a === '日程未定' ? 1 : b === '日程未定' ? -1 : a.localeCompare(b));
+      const totalCash = cashPending.reduce((s, r) => s + Number(r.return_amount), 0);
+
+      html += `<div class="cash-schedule">
+        <div class="cash-schedule__header">
+          <div class="text-sm font-bold">💵 現金手渡しスケジュール</div>
+          <div class="text-xs text-gray">${cashPending.length}件 / 合計 ${Fmt.yen(totalCash)}</div>
+        </div>`;
+      dates.forEach(d => {
+        const g = byDate[d];
+        html += `<div class="cash-schedule__day">
+          <div class="cash-schedule__day-header">
+            <span class="cash-schedule__date">${d === '日程未定' ? '⚠️ 日程未定' : '📅 ' + d}</span>
+            <span class="cash-schedule__day-total">${Fmt.yen(g.total)}</span>
+          </div>
+          <div class="cash-schedule__people">
+            ${g.items.map(r => `<div class="cash-schedule__person"><span>${r.user_name}</span><span>${Fmt.yen(r.return_amount)}</span></div>`).join('')}
+          </div>
+        </div>`;
+      });
+      html += `</div>`;
+    }
+
+    // ── 未処理一覧（振込 → 現金の順） ──
+    if (unprocessed.length > 0) {
+      const transferPending = unprocessed.filter(r => r.method !== 'cash');
+      if (transferPending.length > 0) {
+        html += `<h3 class="section-title mt-2">🏦 振込 (${transferPending.length}件)</h3>`;
+        transferPending.forEach(r => {
+          const hasBank = r.user_bank_name && r.user_bank_number;
+          html += UI.card(`
+            <div class="flex-between"><span class="font-bold">${r.user_name}</span>${UI.badge(Fmt.returnStatus(r.status), Fmt.statusColor(r.status))}</div>
+            ${UI.confirmRow('商品', r.product_name || '-')}
+            ${UI.confirmRow('受取額', Fmt.yen(r.return_amount))}
+            ${r.keep_amount > 0 ? UI.confirmRow('運用継続', Fmt.yen(r.keep_amount)) : ''}
+            ${UI.confirmRow('申請日', Fmt.dateTime(r.created_at))}
+            ${UI.divider()}<div class="text-xs font-bold text-gray mb-05">🏦 振込先</div>${hasBank ? `<div class="bank-info">${UI.confirmRow('銀行', r.user_bank_name)}${r.user_bank_branch ? UI.confirmRow('支店', r.user_bank_branch) : ''}${UI.confirmRow('口座', (r.user_bank_type || '普通') + ' ' + r.user_bank_number)}${r.user_bank_holder ? UI.confirmRow('名義', r.user_bank_holder) : ''}</div>` : '<div class="warning-box">⚠️ 口座情報が未登録</div>'}
+            <div class="btn-group mt-1"><button class="btn btn--primary btn--full" onclick="AdminPages._processReturn('${r.return_id}', 'remitted')">✅ 送金完了</button></div>
+          `);
+        });
+      }
+      if (cashPending.length > 0) {
+        html += `<h3 class="section-title mt-2">💵 現金手渡し (${cashPending.length}件)</h3>`;
+        cashPending.forEach(r => {
+          html += UI.card(`
+            <div class="flex-between"><span class="font-bold">${r.user_name}</span>${UI.badge(Fmt.returnStatus(r.status), Fmt.statusColor(r.status))}</div>
+            ${UI.confirmRow('商品', r.product_name || '-')}
+            ${UI.confirmRow('受取額', Fmt.yen(r.return_amount))}
+            ${r.keep_amount > 0 ? UI.confirmRow('運用継続', Fmt.yen(r.keep_amount)) : ''}
+            ${r.desired_date ? UI.confirmRow('希望日', r.desired_date) : UI.confirmRow('希望日', '<span class="text-red">未定</span>')}
+            ${UI.confirmRow('申請日', Fmt.dateTime(r.created_at))}
+            <div class="btn-group mt-1"><button class="btn btn--primary btn--full" onclick="AdminPages._processReturn('${r.return_id}', 'handed')">✅ 手渡し完了</button></div>
+          `);
+        });
+      }
     }
     if (processed.length > 0) {
-      html += `<h3 class="section-title ${unprocessed.length > 0 ? 'mt-2' : ''}">完了済み (${processed.length}件)</h3>`;
+      html += `<h3 class="section-title mt-2">完了済み (${processed.length}件)</h3>`;
       processed.forEach(r => {
         html += UI.card(`<div class="flex-between"><span class="font-bold">${r.user_name}</span>${UI.badge(Fmt.returnStatus(r.status), Fmt.statusColor(r.status))}</div>${UI.confirmRow('商品', r.product_name || '-')}${UI.confirmRow('受取額', Fmt.yen(r.return_amount))}${UI.confirmRow('方法', r.method === 'cash' ? '現金手渡し' : '銀行振込')}`);
       });
