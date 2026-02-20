@@ -1219,7 +1219,6 @@ const API = {
   async getDashboard()               { return this.cachedCall('getDashboard'); },
   async getUsers()                   { return this.call('getUsers'); },
   async getGroups()                  { return this.cachedCall('getGroups'); },
-  async getSchedule()                { return this.cachedCall('getSchedule'); },
   async updateProfile(data)          { this.clearCache(); return this.call('updateProfile', data); },
   async createUser(data)             { this.clearCache(); return this.call('createUser', data); },
   async updateUser(data)             { this.clearCache(); return this.call('updateUser', data); },
@@ -1550,7 +1549,6 @@ const UserPages = {
           <div class="text-xs">・50個以上：銀行振込 or 現金手渡しで購入可</div>
           <div class="text-xs">・10個未満は購入不可</div>
         </div>
-        ${qty < 10 ? '<div class="warning-box mt-1">⚠️ 最低10個以上から購入できます</div>' : ''}
         ${methodNote && qty >= 10 ? `<div class="text-xs text-gray text-center mt-05">お支払い方法: ${methodNote}</div>` : ''}
         <button class="btn btn--primary btn--full mt-1" ${!canPurchase ? 'disabled' : ''} onclick="UserPages._startPurchase()">購入手続きへ →</button>
       `) : UI.card(`<div class="text-center text-gray">この商品は在庫不足です（最低10個必要）</div>`)}`;
@@ -1561,7 +1559,7 @@ const UserPages = {
   },
 
   _setQty(n) {
-    const q = Math.max(1, Math.min(Math.round(n), 999));
+    const q = Math.max(10, Math.min(Math.round(n), 999));
     this._state.purchaseQty = q;
     const el = document.getElementById('qty-input');
     if (el) el.value = q;
@@ -1714,7 +1712,7 @@ const UserPages = {
           <div class="info-box mt-1"><div class="text-sm font-bold mb-05">お支払い手順</div><div class="text-xs">① 予約確定 → ② 銀行振込（${Fmt.yen(transfer)}）→ ③ 明細アップロード → ④ 確認</div></div>
           ${hasBankInfo ? `<div class="bank-info mt-1"><div class="text-xs font-bold text-gray mb-05">振込先口座</div>${UI.confirmRow('銀行', bank.bank_name)}${bank.bank_branch ? UI.confirmRow('支店', bank.bank_branch) : ''}${UI.confirmRow('口座', (bank.bank_type || '普通') + ' ' + bank.bank_number)}${bank.bank_holder ? UI.confirmRow('名義', bank.bank_holder) : ''}</div>` : ''}
         ` : ''}
-        ${!isTransfer ? '<div class="info-box mt-1"><div class="text-xs">現金手渡しの場合、管理者と直接やり取りしてお支払いください。</div></div>' : ''}
+        ${!isTransfer ? '<div class="info-box mt-1"><div class="text-xs">現金手渡しをご希望の場合、LINEで管理者へご連絡ください。</div></div>' : ''}
         ${transfer === 0 ? '<div class="success-box mt-1">✅ 残高のみで購入完了 — 追加支払いは不要です</div>' : ''}
       `)}
       ${isTransfer ? UI.card(`
@@ -1771,7 +1769,7 @@ const UserPages = {
       const hasBankInfo = bank.bank_name && bank.bank_number;
       html += UI.card(`<h3 class="section-title">🏦 振込先（管理者口座）</h3>${hasBankInfo ? `<div class="bank-info">${UI.confirmRow('振込額', Fmt.yen(transfer), 'font-bold text-lg')}${UI.confirmRow('銀行', bank.bank_name)}${bank.bank_branch ? UI.confirmRow('支店', bank.bank_branch) : ''}${UI.confirmRow('種類', bank.bank_type || '普通')}${UI.confirmRow('口座番号', bank.bank_number)}${bank.bank_holder ? UI.confirmRow('名義', bank.bank_holder) : ''}</div>` : '<div class="warning-box">振込先口座情報が未設定です。管理者にお問い合わせください。</div>'}<div class="info-box mt-1"><div class="text-xs">振込後、マイページから明細をアップロードしてください</div></div>`);
     } else if (transfer > 0) {
-      html += UI.card(`<h3 class="section-title">💵 現金手渡し</h3><div class="info-box"><div class="text-sm font-bold">${Fmt.yen(transfer)}を管理者にお渡しください</div><div class="text-xs mt-05">管理者と直接やり取りの上、お支払いをお願いします。</div></div>`);
+      html += UI.card(`<h3 class="section-title">💵 現金手渡し</h3><div class="info-box"><div class="text-sm font-bold">${Fmt.yen(transfer)}を管理者にお渡しください</div><div class="text-xs mt-05">日程はLINEで管理者へご連絡ください。</div></div>`);
     }
     if (order.iou_requested === 'yes') html += UI.card('<div class="success-box">📄 借用書を希望されています。決済確定後にダウンロード可能になります。</div>');
     html += `<button class="btn btn--primary btn--full mt-1" onclick="App.navigate('top')">TOPに戻る</button>`;
